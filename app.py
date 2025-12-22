@@ -2,112 +2,123 @@ import streamlit as st
 from pypdf import PdfReader
 import os
 
-st.set_page_config(page_title="Parliament Bill Auditor")
+st.set_page_config(page_title="Parliament Bill Auditor", layout="wide")
 
 st.title("🏛️ Parliament Bill Auditor")
-st.write("Upload a Parliamentary Bill PDF to begin analysis.")
 
-# Check if Groq key exists (Cloud only)
-GROQ_AVAILABLE = "GROQ_API_KEY" in os.environ
-
+# ---------- File Upload ----------
 uploaded_file = st.file_uploader(
     "Upload Bill PDF",
     type=["pdf"]
 )
 
-if uploaded_file is not None:
+if uploaded_file:
     reader = PdfReader(uploaded_file)
-
     full_text = ""
     for page in reader.pages:
         full_text += page.extract_text() or ""
 
-    st.success("PDF uploaded and read successfully!")
+    # ---------- Groq Availability ----------
+    GROQ_AVAILABLE = "GROQ_API_KEY" in os.environ
 
-    # --- Bill validation ---
-    preview_text = full_text[:4000].lower()
+    if GROQ_AVAILABLE:
+        from langchain_groq import ChatGroq
 
-    keywords = [
-        "bill", "act", "parliament", "parliament of india",
-        "lok sabha", "rajya sabha", "government of india",
-        "gazette", "legislative", "statement of objects",
-        "statement of objects and reasons",
-        "short title", "extent", "commencement"
-    ]
+        llm = ChatGroq(
+            model_name="llama-3.3-70b-versatile",
+            temperature=0
+        )
 
-    is_bill = any(k in preview_text for k in keywords)
+        if st.button("🔍 Generate Analysis"):
+            with st.spinner("Analyzing bill…"):
+                prompt = f"""
+You are a Public Policy Analyst.
 
-    if is_bill:
-        st.success("✅ This document appears to be a Parliamentary Bill.")
+Analyze the following Parliamentary Bill and respond in clearly
+labeled sections using simple, citizen-friendly language.
 
-        if not GROQ_AVAILABLE:
-            st.info(
-                "ℹ️ AI analysis is disabled locally.\n\n"
-                "It will automatically activate after deployment "
-                "when GROQ_API_KEY is added in Streamlit Cloud."
-            )
-        else:
-            from langchain_groq import ChatGroq
+Provide:
 
-            llm = ChatGroq(
-                model_name="llama-3.3-70b-versatile",
-                temperature=0
-            )
+SECTOR:
+(Choose ONE most relevant sector)
 
-            if st.button("🔍 Generate AI Summary"):
-                with st.spinner("Analyzing bill using Groq..."):
-                    prompt = f"""
-                    You are a Public Policy Analyst.
+SUMMARY:
+(Simple explanation for common citizens)
 
-                    Analyze the following Parliamentary Bill and return the output in
-                    CLEARLY SEPARATED SECTIONS using simple language (8th-grade level).
+IMPACT:
+Short-term (0–1 year)
+Medium-term (1–5 years)
+Long-term (5+ years)
 
-                    Provide:
+BENEFICIARIES:
+(Who benefits?)
 
-                    1. SECTOR:
-                    (Choose one or more: Agriculture, Finance, Education, Healthcare,
-                    Technology, Environment, Defence, Governance, Social Welfare)
+AFFECTED GROUPS:
+(Who may be negatively affected?)
 
-                    2. OBJECTIVE OF THE BILL:
-                    (Why was this bill introduced?)
+POSITIVES:
+(Bullet points)
 
-                    3. SIMPLIFIED SUMMARY:
-                    (10–12 easy-to-understand lines for a common citizen)
+NEGATIVES / RISKS:
+(Bullet points)
 
-                    4. SHORT-TERM IMPACT (0–1 year):
-                    (Bullet points)
-
-                    5. MEDIUM-TERM IMPACT (1–5 years):
-                    (Bullet points)
-
-                    6. LONG-TERM IMPACT (5+ years):
-                    (Bullet points)
-
-                    7. POSITIVES:
-                    (Bullet points)
-
-                    8. NEGATIVES / RISKS:
-                    (Bullet points)
-
-                    Only use the information from the bill text.
-                    Do not add assumptions.
-
-
-
+Only use the bill text.
+Do not assume information.
 
 BILL TEXT:
 {full_text[:12000]}
 """
-                    response = llm.invoke(prompt)
+                response = llm.invoke(prompt)
+                content = response.content
 
-                st.subheader("📄 AI Summary")
-                st.write(response.content)
+            # ---------- Basic Section Extraction ----------
+            def get_section(title):
+                if title not in content:
+                    return "Not specified"
+                part = content.split(title)[1]
+                return part.split("\n\n")[0].strip()
+
+            sector = get_section("SECTOR")
+            summary = get_section("SUMMARY")
+            impact = get_section("IMPACT")
+            beneficiaries = get_section("BENEFICIARIES")
+            affected = get_section("AFFECTED GROUPS")
+            positives = get_section("POSITIVES")
+            negatives = get_section("NEGATIVES")
+
+            # ---------- Tiles Layout ----------
+            st.markdown("### 📌 Bill Overview")
+
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                st.metric("Sector", sector)
+
+            with col2:
+                with st.expander("📄 Summary"):
+                    st.write(summary)
+
+            with col3:
+                with st.expander("📊 Impact Analysis"):
+                    st.markdown("**Impact (Short / Medium / Long Term)**")
+                    st.write(impact)
+
+                    st.markdown("**Who Benefits**")
+                    st.write(beneficiaries)
+
+                    st.markdown("**Who Is Affected**")
+                    st.write(affected)
+
+                    st.markdown("**Positives**")
+                    st.write(positives)
+
+                    st.markdown("**Negatives / Risks**")
+                    st.write(negatives)
+
+            # ---------- AI Chat Placeholder ----------
+            st.markdown("---")
+            st.markdown("### 💬 Ask AI about this Bill")
+            st.info("Chat feature can be enabled next (optional as per project doc).")
 
     else:
-        st.warning("⚠️ This document may NOT be a Parliamentary Bill.")
-
-    st.subheader("Preview (first 500 characters)")
-    st.text(full_text[:500])
-
-
-# streamlit run c:/Users/Ashwin/Documents/Tech/Bill/app.py 
+        st.warning("AI analysis is currently unavailable.")
