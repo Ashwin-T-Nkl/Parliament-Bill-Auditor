@@ -17,7 +17,7 @@ if "analysis" not in st.session_state:
     st.session_state.analysis = None
 
 # ---------------- FILE UPLOAD ----------------
-uploaded_file = st.file_uploader("Upload Bill PDF", type=["pdf"])
+uploaded_file = st.file_uploader(type=["pdf"])
 
 if uploaded_file:
     reader = PdfReader(uploaded_file)
@@ -44,19 +44,21 @@ if uploaded_file:
                 prompt = f"""
 You are a Public Policy Analyst.
 
+Your readers are 8th Grade School Kid.
+
 Return clearly labeled sections:
 
-SECTOR:
-SUMMARY:
+SECTOR: One Word, Which Sector it belongs to.
+SUMMARY: simple summary in less than 10 lines in Bullet Points
 IMPACT:
-- Short-term
-- Medium-term
-- Long-term
+- Short-term, Bullet Points
+- Medium-term, Bullet Points
+- Long-term, Bullet Points
 
-BENEFICIARIES:
-AFFECTED GROUPS:
-POSITIVES:
-NEGATIVES:
+BENEFICIARIES: Bullet Points, less than 5  points
+AFFECTED GROUPS: Bullet Points, less than 5  points
+POSITIVES: Bullet Points, less than 10  points
+NEGATIVES: Bullet Points, less than 10  points
 
 Use only the bill text.
 
@@ -116,7 +118,7 @@ elif st.session_state.view == "impact":
     st.subheader("Positives")
     st.write(extract("POSITIVES:"))
 
-    st.subheader("Negatives / Risks")
+    st.subheader("Risks")
     st.write(extract("NEGATIVES:"))
 
 # ---------------- AI CHAT ----------------
