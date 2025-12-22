@@ -11,7 +11,7 @@ st.write("Upload a Parliamentary Bill PDF to begin analysis.")
 GROQ_AVAILABLE = "GROQ_API_KEY" in os.environ
 
 uploaded_file = st.file_uploader(
-    "Step 1: Upload Bill PDF",
+    "Upload Bill PDF",
     type=["pdf"]
 )
 
@@ -57,8 +57,43 @@ if uploaded_file is not None:
             if st.button("🔍 Generate AI Summary"):
                 with st.spinner("Analyzing bill using Groq..."):
                     prompt = f"""
-Summarize the following Parliamentary Bill in simple English.
-Keep it under 10 lines.
+                    You are a Public Policy Analyst.
+
+                    Analyze the following Parliamentary Bill and return the output in
+                    CLEARLY SEPARATED SECTIONS using simple language (8th-grade level).
+
+                    Provide:
+
+                    1. SECTOR:
+                    (Choose one or more: Agriculture, Finance, Education, Healthcare,
+                    Technology, Environment, Defence, Governance, Social Welfare)
+
+                    2. OBJECTIVE OF THE BILL:
+                    (Why was this bill introduced?)
+
+                    3. SIMPLIFIED SUMMARY:
+                    (10–12 easy-to-understand lines for a common citizen)
+
+                    4. SHORT-TERM IMPACT (0–1 year):
+                    (Bullet points)
+
+                    5. MEDIUM-TERM IMPACT (1–5 years):
+                    (Bullet points)
+
+                    6. LONG-TERM IMPACT (5+ years):
+                    (Bullet points)
+
+                    7. POSITIVES:
+                    (Bullet points)
+
+                    8. NEGATIVES / RISKS:
+                    (Bullet points)
+
+                    Only use the information from the bill text.
+                    Do not add assumptions.
+
+
+
 
 BILL TEXT:
 {full_text[:12000]}
@@ -73,3 +108,6 @@ BILL TEXT:
 
     st.subheader("Preview (first 500 characters)")
     st.text(full_text[:500])
+
+
+# streamlit run c:/Users/Ashwin/Documents/Tech/Bill/app.py 
