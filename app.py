@@ -16,11 +16,19 @@ if "view" not in st.session_state:
 if "analysis" not in st.session_state:
     st.session_state.analysis = None
 
+if "last_file" not in st.session_state:
+    st.session_state.last_file = None
+
 # ---------------- FILE UPLOAD ----------------
-uploaded_file = st.file_uploader(" ", type=["pdf"])
+uploaded_file = st.file_uploader("Upload Bill PDF", type=["pdf"])
 
-
+# Reset state if a NEW file is uploaded
 if uploaded_file:
+    if st.session_state.last_file != uploaded_file.name:
+        st.session_state.last_file = uploaded_file.name
+        st.session_state.analysis = None
+        st.session_state.view = None
+
     reader = PdfReader(uploaded_file)
     full_text = ""
 
@@ -32,6 +40,7 @@ if uploaded_file:
         except:
             continue
 
+    # ---------------- GROQ ----------------
     if "GROQ_API_KEY" in os.environ:
         from langchain_groq import ChatGroq
 
@@ -49,17 +58,18 @@ Your readers are 8th Grade School Kid.
 
 Return clearly labeled sections:
 
-SECTOR: One Word, Which Sector it belongs to like as Finance, Agriculture, Road Transport, shipping etc.,
-SUMMARY: simple summary in less than 10 lines in Bullet Points
+SECTOR: One Word, Which Sector it belongs to like as Finance, Agriculture, Road Transport, Shipping etc.
+SUMMARY: Simple summary in less than 10 lines in Bullet Points
+
 IMPACT:
 - Short-term, Bullet Points
 - Medium-term, Bullet Points
 - Long-term, Bullet Points
 
-BENEFICIARIES: Bullet Points, less than 5  points
-AFFECTED GROUPS: Bullet Points, less than 5  points
-POSITIVES: Bullet Points, less than 10  points
-NEGATIVES: Bullet Points, less than 10  points
+BENEFICIARIES: Bullet Points, less than 5 points
+AFFECTED GROUPS: Bullet Points, less than 5 points
+POSITIVES: Bullet Points, less than 10 points
+NEGATIVES: Bullet Points, less than 10 points
 
 Use only the bill text.
 
@@ -91,36 +101,43 @@ if st.session_state.analysis:
 # ---------------- FULL PAGE CONTENT ----------------
 def extract(title):
     content = st.session_state.analysis
-    if title not in content:
+    if not content or title not in content:
         return "Not available"
-    return content.split(title)[1].split("\n\n")[0].strip()
+
+    text = content.split(title)[1].split("\n\n")[0]
+
+    # Clean markdown artifacts
+    text = text.replace("**", "").strip()
+
+    return text
 
 st.markdown("---")
 
 if st.session_state.view == "sector":
     st.header("🏷️ Sector")
-    st.write(extract("SECTOR:"))
+    st.markdown(extract("SECTOR:"))
 
 elif st.session_state.view == "summary":
     st.header("📄 Bill Summary")
-    st.write(extract("SUMMARY:"))
+    st.markdown(extract("SUMMARY:"))
 
 elif st.session_state.view == "impact":
     st.header("📊 Impact Analysis")
+
     st.subheader("Impact Timeline")
-    st.write(extract("IMPACT:"))
+    st.markdown(extract("IMPACT:"))
 
     st.subheader("Beneficiaries")
-    st.write(extract("BENEFICIARIES:"))
+    st.markdown(extract("BENEFICIARIES:"))
 
     st.subheader("Affected Groups")
-    st.write(extract("AFFECTED GROUPS:"))
+    st.markdown(extract("AFFECTED GROUPS:"))
 
     st.subheader("Positives")
-    st.write(extract("POSITIVES:"))
+    st.markdown(extract("POSITIVES:"))
 
-    st.subheader("Risks")
-    st.write(extract("NEGATIVES:"))
+    st.subheader("Risks / Negatives")
+    st.markdown(extract("NEGATIVES:"))
 
 # ---------------- AI CHAT ----------------
 if st.session_state.analysis:
@@ -132,16 +149,20 @@ if st.session_state.analysis:
     if user_q:
         with st.spinner("Thinking..."):
             chat_prompt = f"""
-Answer the question using ONLY the bill analysis below.
-if the content comes in other language than English, Convert it into English.
+You are answering questions based ONLY on the original Parliamentary Bill text below.
 
+Rules:
+- Use only the bill text
+- Do NOT use prior summaries or analysis
+- Explain answers in simple, citizen-friendly English
+- If the bill does not mention the answer, clearly say so
 
-
-BILL ANALYSIS:
-{st.session_state.analysis}
+BILL TEXT:
+{st.session_state.full_text[:12000]}
 
 QUESTION:
 {user_q}
 """
+
             answer = llm.invoke(chat_prompt)
             st.write(answer.content)
