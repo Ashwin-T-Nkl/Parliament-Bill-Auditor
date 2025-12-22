@@ -20,7 +20,7 @@ if "last_file" not in st.session_state:
     st.session_state.last_file = None
 
 # ---------------- FILE UPLOAD ----------------
-uploaded_file = st.file_uploader("Upload Bill PDF", type=["pdf"])
+uploaded_file = st.file_uploader(" ", type=["pdf"])
 
 # Reset state if a NEW file is uploaded
 if uploaded_file:
@@ -166,3 +166,4 @@ QUESTION:
 
             answer = llm.invoke(chat_prompt)
             st.write(answer.content)
+
