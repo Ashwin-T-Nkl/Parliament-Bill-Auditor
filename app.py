@@ -17,7 +17,7 @@ if "analysis" not in st.session_state:
     st.session_state.analysis = None
 
 # ---------------- FILE UPLOAD ----------------
-uploaded_file = st.file_uploader(type=["pdf"])
+uploaded_file = st.file_uploader("Upload Bill PDF", type=["pdf"])
 
 if uploaded_file:
     reader = PdfReader(uploaded_file)
@@ -141,3 +141,4 @@ QUESTION:
 """
             answer = llm.invoke(chat_prompt)
             st.write(answer.content)
+
