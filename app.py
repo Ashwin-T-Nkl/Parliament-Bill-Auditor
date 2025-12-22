@@ -17,7 +17,8 @@ if "analysis" not in st.session_state:
     st.session_state.analysis = None
 
 # ---------------- FILE UPLOAD ----------------
-uploaded_file = st.file_uploader("Upload Bill PDF", type=["pdf"])
+uploaded_file = st.file_uploader(" ", type=["pdf"])
+
 
 if uploaded_file:
     reader = PdfReader(uploaded_file)
@@ -48,7 +49,7 @@ Your readers are 8th Grade School Kid.
 
 Return clearly labeled sections:
 
-SECTOR: One Word, Which Sector it belongs to.
+SECTOR: One Word, Which Sector it belongs to like as Finance, Agriculture, Road Transport, shipping etc.,
 SUMMARY: simple summary in less than 10 lines in Bullet Points
 IMPACT:
 - Short-term, Bullet Points
@@ -132,6 +133,9 @@ if st.session_state.analysis:
         with st.spinner("Thinking..."):
             chat_prompt = f"""
 Answer the question using ONLY the bill analysis below.
+if the content comes in other language than English, Convert it into English.
+
+
 
 BILL ANALYSIS:
 {st.session_state.analysis}
@@ -141,4 +145,3 @@ QUESTION:
 """
             answer = llm.invoke(chat_prompt)
             st.write(answer.content)
-
