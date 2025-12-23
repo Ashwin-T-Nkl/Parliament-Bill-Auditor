@@ -27,7 +27,9 @@ if "full_text" not in st.session_state:
     st.session_state.full_text = ""
 
 # ---------------- FILE UPLOAD ----------------
-uploaded_file = st.file_uploader("  ", type=["pdf"])
+uploaded_file = st.file_uploader("Upload Bill PDF", type=["pdf"])
+
+is_bill = False  # default
 
 if uploaded_file:
     # Reset state on new file
@@ -50,8 +52,34 @@ if uploaded_file:
 
     st.session_state.full_text = full_text
 
+    # ---------------- BILL VALIDATION ----------------
+    preview_text = full_text[:4000].lower()
+
+    bill_keywords = [
+        "bill",
+        "act",
+        "parliament",
+        "parliament of india",
+        "lok sabha",
+        "rajya sabha",
+        "government of india",
+        "gazette",
+        "legislative",
+        "statement of objects",
+        "statement of objects and reasons",
+        "extent",
+        "commencement",
+        "enacted",
+        "ministry of law"
+    ]
+
+    is_bill = any(keyword in preview_text for keyword in bill_keywords)
+
+    if not is_bill:
+        st.warning("📄 Kindly upload a Parliamentary Bill–related PDF to continue.")
+
     # ---------------- GROQ ----------------
-    if "GROQ_API_KEY" in os.environ:
+    if is_bill and "GROQ_API_KEY" in os.environ:
         from langchain_groq import ChatGroq
 
         llm = ChatGroq(
@@ -144,7 +172,7 @@ if st.session_state.analysis:
         if st.button("📊 Impact"):
             st.session_state.view = "impact"
 
-# ---------------- HELPER FUNCTION ----------------
+# ---------------- HELPER FUNCTIONS ----------------
 def extract(title):
     content = st.session_state.analysis
     if not content or title not in content:
@@ -220,7 +248,7 @@ elif st.session_state.view == "impact":
     st.markdown(extract("NEGATIVES / RISKS:"))
 
 # ---------------- AI CHAT ----------------
-if st.session_state.analysis and st.session_state.full_text:
+if is_bill and st.session_state.analysis and st.session_state.full_text:
     st.markdown("---")
     st.header("💬 Ask AI about this Bill")
 
