@@ -11,9 +11,14 @@ st.set_page_config(page_title="Parliament Bill Auditor", layout="wide")
 st.title("🏛️ Parliament Bill Auditor")
 
 # ---------------- SESSION STATE ----------------
-for key in ["analysis", "view", "last_file", "full_text"]:
-    if key not in st.session_state:
-        st.session_state[key] = None if key != "full_text" else ""
+if "view" not in st.session_state:
+    st.session_state.view = None
+if "analysis" not in st.session_state:
+    st.session_state.analysis = None
+if "last_file" not in st.session_state:
+    st.session_state.last_file = None
+if "full_text" not in st.session_state:
+    st.session_state.full_text = ""
 
 # ---------------- STRICT BILL VALIDATION ----------------
 def is_government_bill(text):
@@ -22,59 +27,37 @@ def is_government_bill(text):
 
     text = text.lower()
 
-    # 1. Bill identity (mandatory)
     bill_identity = [
         r"\bintroduction of the .* bill\b",
         r"\bthe .* bill\b",
         r"\b.* bill, \d{4}\b"
     ]
 
-    # 2. Parliamentary context (mandatory)
     parliament_context = [
         r"lok sabha",
         r"rajya sabha",
         r"hon\. speaker",
         r"hon\. chairperson",
-        r"rules of procedure"
+        r"parliament of india"
     ]
 
-    # 3. Bill lifecycle action (mandatory)
     bill_action = [
         r"leave to introduce a bill",
         r"i introduce the bill",
         r"motion moved",
         r"the motion was adopted",
         r"i rise to oppose .* bill",
-        r"clause \d+",
         r"be it enacted"
     ]
 
-    has_identity = any(re.search(p, text) for p in bill_identity)
-    has_context = any(re.search(p, text) for p in parliament_context)
-    has_action = any(re.search(p, text) for p in bill_action)
-
-    return has_identity and has_context and has_action
-
-# ---------------- PDF CREATOR ----------------
-def create_pdf(text):
-    buf = BytesIO()
-    c = canvas.Canvas(buf, pagesize=A4)
-    y = 800
-    for line in text.split("\n"):
-        if y < 40:
-            c.showPage()
-            y = 800
-        c.drawString(40, y, line[:110])
-        y -= 14
-    c.save()
-    buf.seek(0)
-    return buf
+    return (
+        any(re.search(p, text) for p in bill_identity)
+        and any(re.search(p, text) for p in parliament_context)
+        and any(re.search(p, text) for p in bill_action)
+    )
 
 # ---------------- FILE UPLOAD ----------------
-uploaded_file = st.file_uploader(
-    "Upload Government / Parliamentary Bill PDF",
-    type=["pdf"]
-)
+uploaded_file = st.file_uploader("Upload Government / Parliamentary Bill PDF", type=["pdf"])
 
 if uploaded_file:
     if st.session_state.last_file != uploaded_file.name:
@@ -84,37 +67,37 @@ if uploaded_file:
         st.session_state.full_text = ""
 
     reader = PdfReader(uploaded_file)
-    text = ""
+    full_text = ""
 
     for page in reader.pages:
         try:
-            page_text = page.extract_text()
-            if page_text:
-                text += page_text + "\n"
+            t = page.extract_text()
+            if t:
+                full_text += t + "\n"
         except:
             pass
 
-    st.session_state.full_text = text
+    st.session_state.full_text = full_text
 
     # -------- STRICT VALIDATION --------
-    if not is_government_bill(text):
+    if not is_government_bill(full_text):
         st.error(
             "❌ Invalid document.\n\n"
-            "Only Government / Parliamentary Bill documents "
-            "(as listed under Government Bills on sansad.in) are allowed."
+            "Only Government / Parliamentary Bill PDFs "
+            "(Introduction, Debate, or Bill text from Sansad) are allowed."
         )
         st.stop()
 
     # ---------------- ANALYSIS ----------------
     if st.button("🔍 Generate Analysis"):
         if "GROQ_API_KEY" not in os.environ:
-            st.error("❌ GROQ_API_KEY not configured.")
+            st.error("AI service not configured.")
             st.stop()
 
         from langchain_groq import ChatGroq
         llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0)
 
-        # 🔒 DO NOT MODIFY THIS PROMPT
+        # 🔒 DETAILED PROMPT (UNCHANGED IN SPIRIT)
         prompt = f"""
 You are a Public Policy Analyst.
 
@@ -122,42 +105,24 @@ Your audience:
 • 8th grade school students
 • Common citizens with no legal background
 
-Your task:
 Analyze ONLY the given bill text.
 Do NOT assume anything outside the bill.
-Do NOT add external knowledge.
-
-------------------------------------
-OUTPUT FORMAT (STRICT)
-------------------------------------
-Return the response using EXACTLY the following headings.
-Do NOT change heading names.
-Do NOT add extra headings.
-Do NOT add markdown (**, ###, etc).
 
 ------------------------------------
 SECTOR:
 ------------------------------------
-• Identify the ONE primary sector this bill belongs to
-• Use ONLY ONE WORD
+• ONE word sector only
 
 ------------------------------------
 OBJECTIVE:
 ------------------------------------
-• Explain the main objective of the bill
-• Use VERY SIMPLE language
-• 3 to 5 short lines
-
-------------------------------------
-SUMMARY (SIMPLE):
-------------------------------------
-• 3 to 5 short lines for common citizens
+• 3–5 simple lines
 
 ------------------------------------
 SUMMARY (DETAILED):
 ------------------------------------
-• 10 to 20 bullet points
-• Each bullet = one idea
+• 10–20 bullet points
+• One idea per bullet
 
 ------------------------------------
 IMPACT ANALYSIS:
@@ -189,18 +154,16 @@ NEGATIVES / RISKS:
 • Bullet points
 
 ------------------------------------
-IMPORTANT RULES:
+RULES:
 ------------------------------------
-• Use ONLY the bill text
-• No assumptions
+• Use ONLY bill text
 • Simple language
 • No markdown
 
 ------------------------------------
 BILL TEXT:
-{text[:12000]}
+{full_text[:12000]}
 """
-
         with st.spinner("Analyzing bill..."):
             st.session_state.analysis = llm.invoke(prompt).content
             st.session_state.view = None
@@ -209,7 +172,6 @@ BILL TEXT:
 if st.session_state.analysis:
     st.markdown("### 📌 Explore Analysis")
     c1, c2, c3 = st.columns(3)
-
     if c1.button("🏷️ Sector"):
         st.session_state.view = "sector"
     if c2.button("📄 Summary"):
@@ -217,32 +179,88 @@ if st.session_state.analysis:
     if c3.button("📊 Impact"):
         st.session_state.view = "impact"
 
+# ---------------- HELPERS ----------------
 def extract(title):
-    try:
-        return st.session_state.analysis.split(title)[1].split("\n\n")[0]
-    except:
+    content = st.session_state.analysis
+    if not content or title not in content:
         return "Not available"
+    return content.split(title)[1].split("\n\n")[0].strip()
+
+def generate_pdf(text):
+    buf = BytesIO()
+    pdf = canvas.Canvas(buf, pagesize=A4)
+    y = 800
+    pdf.setFont("Helvetica", 10)
+    for line in text.split("\n"):
+        if y < 50:
+            pdf.showPage()
+            pdf.setFont("Helvetica", 10)
+            y = 800
+        pdf.drawString(40, y, line[:100])
+        y -= 14
+    pdf.save()
+    buf.seek(0)
+    return buf
 
 # ---------------- DISPLAY ----------------
 st.markdown("---")
 
 if st.session_state.view == "sector":
     st.header("🏷️ Sector")
-    st.write(extract("SECTOR:"))
+    st.markdown(extract("SECTOR:"))
 
 elif st.session_state.view == "summary":
-    st.header("📄 Summary")
-    st.write(extract("SUMMARY (SIMPLE):"))
+    st.header("📄 Bill Summary")
+    st.subheader("🎯 Objective")
+    st.markdown(extract("OBJECTIVE:"))
 
-    if st.button("View Detailed Summary"):
+    if st.button("📘 View Detailed Summary"):
         detail = extract("SUMMARY (DETAILED):")
-        st.write(detail)
+        st.markdown(detail)
         st.download_button(
-            "⬇️ Download PDF",
-            create_pdf(detail),
-            "Bill_Summary.pdf"
+            "⬇️ Download Summary PDF",
+            generate_pdf(detail),
+            "Bill_Summary.pdf",
+            "application/pdf"
         )
 
 elif st.session_state.view == "impact":
-    st.header("📊 Impact")
-    st.write(extract("IMPACT ANALYSIS:"))
+    st.header("📊 Impact Analysis")
+    st.subheader("Citizens")
+    st.markdown(extract("Citizens:"))
+    st.subheader("Businesses")
+    st.markdown(extract("Businesses:"))
+    st.subheader("Government")
+    st.markdown(extract("Government:"))
+    st.subheader("Industries / Markets")
+    st.markdown(extract("Industries / Markets:"))
+    st.subheader("NGOs / Civil Society")
+    st.markdown(extract("NGOs / Civil Society:"))
+
+    st.subheader("Beneficiaries")
+    st.markdown(extract("BENEFICIARIES:"))
+    st.subheader("Affected Groups")
+    st.markdown(extract("AFFECTED GROUPS:"))
+    st.subheader("Positives")
+    st.markdown(extract("POSITIVES:"))
+    st.subheader("Risks")
+    st.markdown(extract("NEGATIVES / RISKS:"))
+
+# ---------------- AI CHAT ----------------
+if st.session_state.analysis:
+    st.markdown("---")
+    st.header("💬 Ask AI about this Bill")
+    q = st.text_input("Ask a question")
+    if q:
+        from langchain_groq import ChatGroq
+        llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0)
+        ans = llm.invoke(f"""
+Answer ONLY using the bill text.
+
+BILL TEXT:
+{st.session_state.full_text[:12000]}
+
+QUESTION:
+{q}
+""")
+        st.write(ans.content)
