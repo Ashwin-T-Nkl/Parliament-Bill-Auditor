@@ -21,20 +21,6 @@ if "last_file" not in st.session_state:
 if "full_text" not in st.session_state:
     st.session_state.full_text = ""
 
-# ---------------- TEXT CLEANING HELPER ----------------
-def clean_for_ai(text):
-    """
-    Removes the '' tags and backslashes. 
-    These patterns are the reason the AI glitches into numerical answers.
-    """
-    # 1. Removes any text inside square brackets like 
-    cleaned = re.sub(r'\', '', text)
-    # 2. Removes standard bracketed numbers like [110]
-    cleaned = re.sub(r'\[\d+\]', '', cleaned)
-    # 3. Removes literal backslashes safely without causing SyntaxErrors
-    cleaned = cleaned.replace('\\', '')
-    return cleaned.strip()
-
 # ---------------- FILE UPLOAD ----------------
 uploaded_file = st.file_uploader("Upload Bill PDF", type=["pdf"])
 
@@ -45,28 +31,24 @@ if uploaded_file:
         st.session_state.view = None
         st.session_state.full_text = ""
 
-        # Extracting text using pypdf
         reader = PdfReader(uploaded_file)
-        raw_text = ""
+        full_text = ""
         for page in reader.pages:
             try:
                 text = page.extract_text()
                 if text:
-                    raw_text += text + "\n"
+                    full_text += text + "\n"
             except:
                 pass
-        
-        # Clean text immediately after extraction to prevent numerical loops
-        st.session_state.full_text = clean_for_ai(raw_text)
+        st.session_state.full_text = full_text
 
-    # API Configuration
     if "GROQ_API_KEY" not in os.environ:
-        st.error("GROQ_API_KEY not found in environment variables.")
+        st.error("AI service not configured. Please set GROQ_API_KEY in environment variables.")
         st.stop()
 
     llm = ChatGroq(
         model_name="llama-3.1-8b-instant",
-        temperature=0.1  # Set to 0.1 to help avoid repetitive numerical loops
+        temperature=0
     )
 
     if st.button("🔍 Generate Analysis"):
@@ -140,12 +122,13 @@ if st.session_state.analysis:
     if c3.button("📊 Impact"):
         st.session_state.view = "impact"
 
-# ---------------- DATA EXTRACTION HELPERS ----------------
+# ---------------- HELPERS ----------------
 def extract(title):
     content = st.session_state.analysis
     if not content:
         return "Not available"
     
+    # List of all possible headers to find the boundaries
     headers = [
         "SECTOR:", "OBJECTIVE:", "SIMPLE SUMMARY:", "DETAILED SUMMARY:",
         "IMPACT ANALYSIS:", "BENEFICIARIES:", "AFFECTED GROUPS:",
@@ -153,10 +136,13 @@ def extract(title):
     ]
     
     try:
+        # Find the start of the requested section
         start_idx = content.find(title)
         if start_idx == -1: return "Section not found."
         
         start_pos = start_idx + len(title)
+        
+        # Find the start of the NEXT section to crop the text
         remaining_content = content[start_pos:]
         end_pos = len(remaining_content)
         
@@ -166,7 +152,8 @@ def extract(title):
                 end_pos = h_idx
         
         text = remaining_content[:end_pos].strip()
-        # Remove any stray markdown for cleaner display
+        
+        # CLEAN MARKDOWN JUNK
         for m in ["**", "__", "##", "###"]:
             text = text.replace(m, "")
         return text
@@ -183,6 +170,7 @@ def generate_summary_pdf(text):
         if y < 40:
             pdf.showPage()
             y = 800
+        # Basic line wrapping logic
         pdf.drawString(40, y, line[:100])
         y -= 14
 
@@ -201,6 +189,7 @@ elif st.session_state.view == "summary":
     st.header("📄 Bill Summary")
     st.subheader("🎯 Objective")
     st.write(extract("OBJECTIVE:"))
+    
     st.subheader("💡 Simple Overview")
     st.write(extract("SIMPLE SUMMARY:"))
 
@@ -217,12 +206,14 @@ elif st.session_state.view == "summary":
 elif st.session_state.view == "impact":
     st.header("📊 Impact Analysis")
     st.write(extract("IMPACT ANALYSIS:"))
+
     col_a, col_b = st.columns(2)
     with col_a:
         st.subheader("✅ Positives")
         st.success(extract("POSITIVES:"))
         st.subheader("💎 Beneficiaries")
         st.write(extract("BENEFICIARIES:"))
+    
     with col_b:
         st.subheader("⚠️ Risks")
         st.error(extract("NEGATIVES / RISKS:"))
@@ -236,14 +227,10 @@ if st.session_state.analysis and st.session_state.full_text:
     user_q = st.text_input("Ask a specific question about a clause or rule:")
 
     if user_q:
-        with st.spinner("Thinking..."):
+        with st.spinner("Searching bill text..."):
             chat_prompt = f"""
-            Answer the question using ONLY the provided Bill text.
-            If the answer is not mentioned, say 'Not mentioned in the document'.
-            
-            RULES:
-            - Answer in full sentences.
-            - DO NOT output long lists of numbers or source tags.
+            Answer the question based on the Parliamentary Bill text below.
+            If the answer isn't in the text, say you don't know.
 
             BILL TEXT:
             {st.session_state.full_text[:20000]}
