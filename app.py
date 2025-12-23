@@ -4,6 +4,7 @@ import os
 from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
+from langchain_groq import ChatGroq
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(
@@ -44,24 +45,27 @@ if uploaded_file:
         try:
             text = page.extract_text()
             if text:
-                full_text += text
+                full_text += text + "\n"
         except:
-            continue
+            pass
 
     st.session_state.full_text = full_text
 
-    # ---------------- GROQ ----------------
-    if "GROQ_API_KEY" in os.environ:
-        from langchain_groq import ChatGroq
+    # ---------------- GROQ MODEL ----------------
+    if "GROQ_API_KEY" not in os.environ:
+        st.error("GROQ_API_KEY not configured")
+        st.stop()
 
-        llm = ChatGroq(
-            model_name="llama-3.3-70b-versatile",
-            temperature=0
-        )
+    # ✅ STABLE MODEL (THIS IS IMPORTANT)
+    llm = ChatGroq(
+        model_name="llama-3.1-8b-instant",
+        temperature=0
+    )
 
-        if st.button("🔍 Generate Analysis"):
-            with st.spinner("Analyzing bill..."):
-                prompt = f"""
+    # ---------------- ANALYSIS ----------------
+    if st.button("🔍 Generate Analysis"):
+        with st.spinner("Analyzing bill..."):
+            prompt = f"""
 You are a Public Policy Analyst.
 
 Your readers are 8th Grade School students and common citizens.
@@ -69,7 +73,7 @@ Your readers are 8th Grade School students and common citizens.
 Return clearly labeled sections using simple language.
 
 SECTOR:
-One word primary sector (e.g., Finance, Agriculture, Transport, Energy, Shipping).
+One word primary sector.
 
 OBJECTIVE:
 Explain the main objective of this bill in 3–4 simple lines.
@@ -81,8 +85,6 @@ Provide a 10–20 bullet point explanation:
 - What changes for a normal person
 
 IMPACT ANALYSIS:
-Explain the impact separately for each group:
-
 Citizens:
 (Bullet points)
 
@@ -99,20 +101,16 @@ NGOs / Civil Society:
 (Bullet points)
 
 BENEFICIARIES:
-Clearly mention:
-- Which sectors benefit
-- Which sectors get new business or growth opportunities
+(Bullet points)
 
 AFFECTED GROUPS:
-Clearly mention:
-- Which sectors face restrictions
-- Which sectors face higher costs, compliance, or limitations
+(Bullet points)
 
 POSITIVES:
-(Bullet points focusing on advantages and opportunities)
+(Bullet points)
 
 NEGATIVES / RISKS:
-(Bullet points focusing on risks, costs, resistance, or implementation challenges)
+(Bullet points)
 
 Rules:
 - Use only the bill text
@@ -120,11 +118,11 @@ Rules:
 - Keep language simple
 
 BILL TEXT:
-{st.session_state.full_text[:12000]}
+{st.session_state.full_text[:20000]}
 """
-                response = llm.invoke(prompt)
-                st.session_state.analysis = response.content
-                st.session_state.view = None
+            response = llm.invoke(prompt)
+            st.session_state.analysis = response.content
+            st.session_state.view = None
 
 # ---------------- TILE NAVIGATION ----------------
 if st.session_state.analysis:
@@ -132,41 +130,33 @@ if st.session_state.analysis:
 
     c1, c2, c3 = st.columns(3)
 
-    with c1:
-        if st.button("🏷️ Sector"):
-            st.session_state.view = "sector"
+    if c1.button("🏷️ Sector"):
+        st.session_state.view = "sector"
 
-    with c2:
-        if st.button("📄 Summary"):
-            st.session_state.view = "summary"
+    if c2.button("📄 Summary"):
+        st.session_state.view = "summary"
 
-    with c3:
-        if st.button("📊 Impact"):
-            st.session_state.view = "impact"
+    if c3.button("📊 Impact"):
+        st.session_state.view = "impact"
 
-# ---------------- HELPER FUNCTION ----------------
+# ---------------- HELPER ----------------
 def extract(title):
     content = st.session_state.analysis
     if not content or title not in content:
         return "Not available"
-
-    text = content.split(title)[1].split("\n\n")[0]
-    text = text.replace("**", "").strip()
-    return text
+    return content.split(title)[1].split("\n\n")[0].strip()
 
 def generate_summary_pdf(text):
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-    y = height - 50
-
+    y = 800
     pdf.setFont("Helvetica", 10)
 
     for line in text.split("\n"):
-        if y < 50:
+        if y < 40:
             pdf.showPage()
             pdf.setFont("Helvetica", 10)
-            y = height - 50
+            y = 800
         pdf.drawString(40, y, line[:100])
         y -= 14
 
@@ -179,47 +169,41 @@ st.markdown("---")
 
 if st.session_state.view == "sector":
     st.header("🏷️ Sector")
-    st.markdown(extract("SECTOR:"))
+    st.write(extract("SECTOR:"))
 
 elif st.session_state.view == "summary":
     st.header("📄 Bill Summary")
-
     st.subheader("🎯 Objective")
-    st.markdown(extract("OBJECTIVE:"))
+    st.write(extract("OBJECTIVE:"))
 
     if st.button("📘 View Detailed Summary"):
-        st.subheader("🧾 Detailed Summary")
-        detailed_summary = extract("SUMMARY (DETAILED):")
-        st.markdown(detailed_summary)
-
-        pdf_file = generate_summary_pdf(detailed_summary)
+        detail = extract("SUMMARY (DETAILED):")
+        st.write(detail)
 
         st.download_button(
             "⬇️ Download Detailed Summary (PDF)",
-            data=pdf_file,
-            file_name="Bill_Detailed_Summary.pdf",
-            mime="application/pdf"
+            generate_summary_pdf(detail),
+            "Bill_Detailed_Summary.pdf",
+            "application/pdf"
         )
 
 elif st.session_state.view == "impact":
     st.header("📊 Impact Analysis")
+    st.write(extract("IMPACT ANALYSIS:"))
 
-    st.subheader("Impact by Stakeholder")
-    st.markdown(extract("IMPACT ANALYSIS:"))
+    st.subheader("Beneficiaries")
+    st.write(extract("BENEFICIARIES:"))
 
-    st.subheader("Beneficiaries (Industries & Sectors)")
-    st.markdown(extract("BENEFICIARIES:"))
-
-    st.subheader("Affected Groups (Restrictions & Costs)")
-    st.markdown(extract("AFFECTED GROUPS:"))
+    st.subheader("Affected Groups")
+    st.write(extract("AFFECTED GROUPS:"))
 
     st.subheader("Positives")
-    st.markdown(extract("POSITIVES:"))
+    st.write(extract("POSITIVES:"))
 
-    st.subheader("Risks / Negatives")
-    st.markdown(extract("NEGATIVES / RISKS:"))
+    st.subheader("Risks")
+    st.write(extract("NEGATIVES / RISKS:"))
 
-# ---------------- AI CHAT ----------------
+# ---------------- AI CHAT (NO RESTRICTIONS) ----------------
 if st.session_state.analysis and st.session_state.full_text:
     st.markdown("---")
     st.header("💬 Ask AI about this Bill")
@@ -229,16 +213,11 @@ if st.session_state.analysis and st.session_state.full_text:
     if user_q:
         with st.spinner("Thinking..."):
             chat_prompt = f"""
-You are answering questions based ONLY on the original Parliamentary Bill text below.
-
-Rules:
-- Use only the bill text
-- Do NOT use prior summaries or analysis
-- Explain answers in simple, citizen-friendly English
-- If the bill does not mention the answer, clearly say so
+Answer the question based on the Parliamentary Bill text below.
+Use the bill text to answer.
 
 BILL TEXT:
-{st.session_state.full_text[:12000]}
+{st.session_state.full_text[:20000]}
 
 QUESTION:
 {user_q}
