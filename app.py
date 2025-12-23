@@ -24,7 +24,7 @@ if "full_text" not in st.session_state:
 # ---------------- TEXT CLEANING HELPER ----------------
 def clean_pdf_text(text):
     """Removes tags which cause the AI to output numbers."""
-    return re.sub(r'\', '', text)
+    return re.sub(r'\\', '', text)
 
 # ---------------- FILE UPLOAD ----------------
 uploaded_file = st.file_uploader("Upload Bill PDF", type=["pdf"])
@@ -174,3 +174,4 @@ if st.session_state.analysis and st.session_state.full_text:
             """
             answer = llm.invoke(chat_prompt)
             st.chat_message("assistant").write(answer.content)
+
