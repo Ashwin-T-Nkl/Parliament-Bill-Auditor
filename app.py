@@ -117,6 +117,7 @@ SECTOR:
 OBJECTIVE:
 ------------------------------------
 • 3–5 simple lines
+• Bullet points
 
 ------------------------------------
 SUMMARY (DETAILED):
@@ -127,11 +128,11 @@ SUMMARY (DETAILED):
 ------------------------------------
 IMPACT ANALYSIS:
 ------------------------------------
-Citizens:
-Businesses:
-Government:
-Industries / Markets:
-NGOs / Civil Society:
+Citizens: • Bullet points
+Businesses: • Bullet points
+Government: • Bullet points
+Industries / Markets: • Bullet points
+NGOs / Civil Society: • Bullet points
 
 ------------------------------------
 BENEFICIARIES:
@@ -264,3 +265,4 @@ QUESTION:
 {q}
 """)
         st.write(ans.content)
+
