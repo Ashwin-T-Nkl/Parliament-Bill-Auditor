@@ -20,7 +20,7 @@ if "full_text" not in st.session_state:
     st.session_state.full_text = ""
 
 # ---------------- FILE UPLOAD ----------------
-uploaded_file = st.file_uploader("Upload Bill PDF", type=["pdf"])
+uploaded_file = st.file_uploader(" ", type=["pdf"])
 
 if uploaded_file:
     # Reset state on new file
@@ -45,43 +45,48 @@ if uploaded_file:
 
     # ---------------- GENERATE ANALYSIS ----------------
     if st.button("🔍 Generate Analysis"):
-        # ---- BILL VALIDATION (HERE is the fix) ----
-        preview_text = full_text[:4000].lower()
+        text = full_text[:12000].lower()
 
-        bill_keywords = [
-            "bill",
-            "act",
-            "parliament",
-            "parliament of india",
+        # -------- MERGED LEGISLATIVE / OFFICIAL MARKERS --------
+        bill_markers = [
+            "be it enacted by parliament",
+            "it is hereby enacted",
+            "this act may be called",
+            "shall come into force",
+            "notwithstanding anything contained",
+            "may, by notification",
             "lok sabha",
             "rajya sabha",
-            "government of india",
-            "gazette",
-            "legislative",
-            "statement of objects",
+            "gazette of india",
+            "as introduced in lok sabha",
+            "as introduced in rajya sabha",
             "statement of objects and reasons",
-            "extent",
-            "commencement",
-            "enacted",
-            "ministry of law"
+            "short title and commencement",
+            "arrangement of clauses",
+            "financial memorandum",
+            "memorandum regarding delegated legislation",
+            "president's recommendation",
+            "president's recommendation",
+            "government of india press",
+            "bill no."
         ]
 
-        is_bill = any(k in preview_text for k in bill_keywords)
+        match_count = sum(1 for marker in bill_markers if marker in text)
+
+        # Require multiple legislative signals
+        is_bill = match_count >= 3
 
         if not is_bill:
-            st.warning("📄 Kindly upload a Parliamentary Bill–related PDF.")
+            st.warning("📄 Kindly upload an official Government / Parliamentary Bill PDF.")
             st.stop()
 
-        # ---- GROQ ANALYSIS ONLY IF VALID ----
+        # -------- GROQ LLM --------
         if "GROQ_API_KEY" not in os.environ:
-            st.error("AI service not configured.")
+            st.error("AI service is not configured.")
             st.stop()
 
         from langchain_groq import ChatGroq
-        llm = ChatGroq(
-            model_name="llama-3.3-70b-versatile",
-            temperature=0
-        )
+        llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0)
 
         with st.spinner("Analyzing bill..."):
             prompt = f"""
@@ -95,10 +100,13 @@ SECTOR:
 One word primary sector.
 
 OBJECTIVE:
-Explain the main objective in 3–4 lines.
+Explain the main objective of this bill in 3–4 simple lines.
 
 SUMMARY (DETAILED):
-10–20 bullet points explaining the bill.
+10–15 bullet points explaining:
+- What the bill does
+- Why it matters
+- What changes for a normal person
 
 IMPACT ANALYSIS:
 Citizens:
@@ -108,10 +116,10 @@ Industries / Markets:
 NGOs / Civil Society:
 
 BENEFICIARIES:
-Sectors that benefit or gain opportunities.
+Which sectors benefit or gain opportunities.
 
 AFFECTED GROUPS:
-Sectors facing restrictions or costs.
+Which sectors face restrictions or costs.
 
 POSITIVES:
 NEGATIVES / RISKS:
@@ -129,6 +137,7 @@ BILL TEXT:
 if st.session_state.analysis:
     st.markdown("### 📌 Explore Analysis")
     c1, c2, c3 = st.columns(3)
+
     with c1:
         if st.button("🏷️ Sector"):
             st.session_state.view = "sector"
@@ -147,10 +156,11 @@ def extract(title):
     return content.split(title)[1].split("\n\n")[0].replace("**", "").strip()
 
 def generate_summary_pdf(text):
-    buf = BytesIO()
-    pdf = canvas.Canvas(buf, pagesize=A4)
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=A4)
     y = 800
     pdf.setFont("Helvetica", 10)
+
     for line in text.split("\n"):
         if y < 50:
             pdf.showPage()
@@ -158,9 +168,10 @@ def generate_summary_pdf(text):
             y = 800
         pdf.drawString(40, y, line[:100])
         y -= 14
+
     pdf.save()
-    buf.seek(0)
-    return buf
+    buffer.seek(0)
+    return buffer
 
 # ---------------- CONTENT ----------------
 st.markdown("---")
@@ -175,11 +186,11 @@ elif st.session_state.view == "summary":
     st.markdown(extract("OBJECTIVE:"))
 
     if st.button("📘 View Detailed Summary"):
-        detail = extract("SUMMARY (DETAILED):")
-        st.markdown(detail)
+        detailed = extract("SUMMARY (DETAILED):")
+        st.markdown(detailed)
         st.download_button(
             "⬇️ Download Summary PDF",
-            generate_summary_pdf(detail),
+            generate_summary_pdf(detailed),
             "Bill_Summary.pdf",
             "application/pdf"
         )
@@ -196,21 +207,25 @@ elif st.session_state.view == "impact":
     st.subheader("Risks")
     st.markdown(extract("NEGATIVES / RISKS:"))
 
-# ---------------- CHAT ----------------
+# ---------------- AI CHAT ----------------
 if st.session_state.analysis:
     st.markdown("---")
     st.header("💬 Ask AI about this Bill")
-    q = st.text_input("Ask a question")
-    if q:
+
+    question = st.text_input("Ask a question")
+
+    if question:
         from langchain_groq import ChatGroq
         llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0)
-        ans = llm.invoke(f"""
-Answer ONLY from the bill text below.
+
+        answer = llm.invoke(f"""
+Answer ONLY using the bill text below.
+If not found, clearly say so.
 
 BILL TEXT:
 {st.session_state.full_text[:12000]}
 
 QUESTION:
-{q}
+{question}
 """)
-        st.write(ans.content)
+        st.write(answer.content)
