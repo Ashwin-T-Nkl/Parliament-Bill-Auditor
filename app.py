@@ -31,7 +31,7 @@ def clean_for_ai(text):
     cleaned = re.sub(r'\', '', text)
     # 2. Removes standard bracketed numbers like [110]
     cleaned = re.sub(r'\[\d+\]', '', cleaned)
-    # 3. Removes literal backslashes to prevent SyntaxErrors
+    # 3. Removes literal backslashes safely without causing SyntaxErrors
     cleaned = cleaned.replace('\\', '')
     return cleaned.strip()
 
@@ -56,7 +56,7 @@ if uploaded_file:
             except:
                 pass
         
-        # Clean text immediately after extraction
+        # Clean text immediately after extraction to prevent numerical loops
         st.session_state.full_text = clean_for_ai(raw_text)
 
     # API Configuration
@@ -66,7 +66,7 @@ if uploaded_file:
 
     llm = ChatGroq(
         model_name="llama-3.1-8b-instant",
-        temperature=0.1  # Set to 0.1 to help avoid repeating loops
+        temperature=0.1  # Set to 0.1 to help avoid repetitive numerical loops
     )
 
     if st.button("🔍 Generate Analysis"):
@@ -166,7 +166,7 @@ def extract(title):
                 end_pos = h_idx
         
         text = remaining_content[:end_pos].strip()
-        # Remove any stray markdown
+        # Remove any stray markdown for cleaner display
         for m in ["**", "__", "##", "###"]:
             text = text.replace(m, "")
         return text
@@ -221,9 +221,13 @@ elif st.session_state.view == "impact":
     with col_a:
         st.subheader("✅ Positives")
         st.success(extract("POSITIVES:"))
+        st.subheader("💎 Beneficiaries")
+        st.write(extract("BENEFICIARIES:"))
     with col_b:
         st.subheader("⚠️ Risks")
         st.error(extract("NEGATIVES / RISKS:"))
+        st.subheader("👥 Affected Groups")
+        st.write(extract("AFFECTED GROUPS:"))
 
 # ---------------- AI CHAT ----------------
 if st.session_state.analysis and st.session_state.full_text:
