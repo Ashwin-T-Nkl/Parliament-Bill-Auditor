@@ -1,6 +1,6 @@
 streamlit
 pypdf
 langchain-groq
-langchain-community
-Add reportlab for PDF export
+reportlab
+
 
