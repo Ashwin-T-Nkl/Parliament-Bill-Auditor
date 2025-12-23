@@ -77,34 +77,57 @@ if uploaded_file:
                 Your readers are 8th Grade School students and common citizens.
 
                 Return clearly labeled sections using simple language.
-
+ 
                 SECTOR:
-                One word primary sector.
-
+                One word primary sector (e.g., Finance, Agriculture, Transport, Energy, Shipping).
+                    
                 OBJECTIVE:
                 Explain the main objective of this bill in 3–4 simple lines.
-
+                    
                 SUMMARY (DETAILED):
-                10–20 bullet points explaining:
-                - What the bill does
-                - Why it matters
-                - What changes for a normal person
-
+                Provide a 10–20 bullet point explanation:
+                    - What the bill does
+                    - Why it matters
+                    - What changes for a normal person
+                    
                 IMPACT ANALYSIS:
+                Explain the impact separately for each group:
+                    
                 Citizens:
+                (Bullet points)
+                    
                 Businesses:
+                (Bullet points)
+                    
                 Government:
+                (Bullet points)
+                    
                 Industries / Markets:
+                (Bullet points)
+                    
                 NGOs / Civil Society:
-
+                (Bullet points)
+                    
                 BENEFICIARIES:
-                Which sectors benefit or gain opportunities.
-
+                Clearly mention:
+                    - Which sectors benefit
+                    - Which sectors get new business or growth opportunities
+                    
                 AFFECTED GROUPS:
-                Which sectors face restrictions or costs.
-
+                Clearly mention:
+                    - Which sectors face restrictions
+                    - Which sectors face higher costs, compliance, or limitations
+                    
                 POSITIVES:
+                (Bullet points focusing on advantages and opportunities)
+                    
                 NEGATIVES / RISKS:
+                (Bullet points focusing on risks, costs, resistance, or implementation challenges)
+                    
+                Rules:
+                    - Use only the bill text
+                    - Do not assume facts
+                    - Keep language simple
 
                 Use only the bill text.
 BILL TEXT:
@@ -181,6 +204,7 @@ QUESTION:
 {q}
 """)
         st.write(ans.content)
+
 
 
 
