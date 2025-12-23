@@ -1,6 +1,7 @@
 import streamlit as st
 from pypdf import PdfReader
 import os
+import re
 from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -30,21 +31,19 @@ if uploaded_file:
         st.session_state.view = None
         st.session_state.full_text = ""
 
-    reader = PdfReader(uploaded_file)
-    full_text = ""
-
-    for page in reader.pages:
-        try:
-            text = page.extract_text()
-            if text:
-                full_text += text + "\n"
-        except:
-            pass
-
-    st.session_state.full_text = full_text
+        reader = PdfReader(uploaded_file)
+        full_text = ""
+        for page in reader.pages:
+            try:
+                text = page.extract_text()
+                if text:
+                    full_text += text + "\n"
+            except:
+                pass
+        st.session_state.full_text = full_text
 
     if "GROQ_API_KEY" not in os.environ:
-        st.error("AI service not configured.")
+        st.error("AI service not configured. Please set GROQ_API_KEY in environment variables.")
         st.stop()
 
     llm = ChatGroq(
@@ -56,37 +55,52 @@ if uploaded_file:
         with st.spinner("Analyzing bill..."):
             prompt = f"""
 You are a Public Policy Analyst.
+Audience: 8th grade students and common citizens.
+Use very simple language.
 
-Your readers are 8th Grade School students and common citizens.
-
-Return clearly labeled sections using simple language.
+Return EXACTLY the following headings and follow the rules strictly.
 
 SECTOR:
-One word primary sector.
+- ONE word only
 
 OBJECTIVE:
-Explain the main objective of this bill in 3–4 simple lines. Bullet Points
+- 3 to 5 short lines
 
-SUMMARY (DETAILED):
-Provide a 10–20 bullet point explanation. Bullet Points
+SIMPLE SUMMARY:
+- 3 to 5 short lines
 
-IMPACT ANALYSIS: Bullet Points
+DETAILED SUMMARY:
+- 10 to 20 bullet points
+
+IMPACT ANALYSIS:
 Citizens:
+- Bullet points
 Businesses:
+- Bullet points
 Government:
+- Bullet points
 Industries / Markets:
+- Bullet points
 NGOs / Civil Society:
+- Bullet points
 
-BENEFICIARIES: Bullet Points
+BENEFICIARIES:
+- Bullet points
+
 AFFECTED GROUPS:
+- Bullet points
+
 POSITIVES:
+- Bullet points
+
 NEGATIVES / RISKS:
+- Bullet points
 
 Rules:
-- Use only the bill text
-- Do not assume facts
-- Keep language simple
-Bullet Points
+- Use ONLY the bill text
+- No assumptions
+- No markdown symbols (** ### etc)
+- Follow bullet rules strictly
 
 BILL TEXT:
 {st.session_state.full_text[:20000]}
@@ -97,6 +111,7 @@ BILL TEXT:
 
 # ---------------- NAVIGATION ----------------
 if st.session_state.analysis:
+    st.markdown("---")
     st.markdown("### 📌 Explore Analysis")
     c1, c2, c3 = st.columns(3)
 
@@ -107,19 +122,43 @@ if st.session_state.analysis:
     if c3.button("📊 Impact"):
         st.session_state.view = "impact"
 
-# ---------------- DISPLAY CLEANER ----------------
+# ---------------- HELPERS ----------------
 def extract(title):
     content = st.session_state.analysis
-    if not content or title not in content:
+    if not content:
         return "Not available"
-
-    text = content.split(title)[1].split("\n\n")[0]
-
-    # CLEAN MARKDOWN JUNK (DISPLAY ONLY)
-    for m in ["**", "__", "##", "###", "*"]:
-        text = text.replace(m, "")
-
-    return text.strip()
+    
+    # List of all possible headers to find the boundaries
+    headers = [
+        "SECTOR:", "OBJECTIVE:", "SIMPLE SUMMARY:", "DETAILED SUMMARY:",
+        "IMPACT ANALYSIS:", "BENEFICIARIES:", "AFFECTED GROUPS:",
+        "POSITIVES:", "NEGATIVES / RISKS:"
+    ]
+    
+    try:
+        # Find the start of the requested section
+        start_idx = content.find(title)
+        if start_idx == -1: return "Section not found."
+        
+        start_pos = start_idx + len(title)
+        
+        # Find the start of the NEXT section to crop the text
+        remaining_content = content[start_pos:]
+        end_pos = len(remaining_content)
+        
+        for h in headers:
+            h_idx = remaining_content.find(h)
+            if h_idx != -1 and h_idx < end_pos:
+                end_pos = h_idx
+        
+        text = remaining_content[:end_pos].strip()
+        
+        # CLEAN MARKDOWN JUNK
+        for m in ["**", "__", "##", "###"]:
+            text = text.replace(m, "")
+        return text
+    except:
+        return "Error extracting section."
 
 def generate_summary_pdf(text):
     buffer = BytesIO()
@@ -131,6 +170,7 @@ def generate_summary_pdf(text):
         if y < 40:
             pdf.showPage()
             y = 800
+        # Basic line wrapping logic
         pdf.drawString(40, y, line[:100])
         y -= 14
 
@@ -138,20 +178,23 @@ def generate_summary_pdf(text):
     buffer.seek(0)
     return buffer
 
-# ---------------- CONTENT ----------------
+# ---------------- CONTENT DISPLAY ----------------
 st.markdown("---")
 
 if st.session_state.view == "sector":
     st.header("🏷️ Sector")
-    st.write(extract("SECTOR:"))
+    st.info(extract("SECTOR:"))
 
 elif st.session_state.view == "summary":
     st.header("📄 Bill Summary")
     st.subheader("🎯 Objective")
     st.write(extract("OBJECTIVE:"))
+    
+    st.subheader("💡 Simple Overview")
+    st.write(extract("SIMPLE SUMMARY:"))
 
-    if st.button("📘 View Detailed Summary"):
-        detail = extract("SUMMARY (DETAILED):")
+    with st.expander("📘 View Detailed Summary"):
+        detail = extract("DETAILED SUMMARY:")
         st.write(detail)
         st.download_button(
             "⬇️ Download Detailed Summary (PDF)",
@@ -162,39 +205,38 @@ elif st.session_state.view == "summary":
 
 elif st.session_state.view == "impact":
     st.header("📊 Impact Analysis")
-
-    st.subheader("Impact")
     st.write(extract("IMPACT ANALYSIS:"))
 
-    st.subheader("Beneficiaries")
-    st.write(extract("BENEFICIARIES:"))
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.subheader("✅ Positives")
+        st.success(extract("POSITIVES:"))
+        st.subheader("💎 Beneficiaries")
+        st.write(extract("BENEFICIARIES:"))
+    
+    with col_b:
+        st.subheader("⚠️ Risks")
+        st.error(extract("NEGATIVES / RISKS:"))
+        st.subheader("👥 Affected Groups")
+        st.write(extract("AFFECTED GROUPS:"))
 
-    st.subheader("Affected Groups")
-    st.write(extract("AFFECTED GROUPS:"))
-
-    st.subheader("Positives")
-    st.write(extract("POSITIVES:"))
-
-    st.subheader("Risks")
-    st.write(extract("NEGATIVES / RISKS:"))
-
-# ---------------- AI CHAT (UNCHANGED) ----------------
+# ---------------- AI CHAT ----------------
 if st.session_state.analysis and st.session_state.full_text:
     st.markdown("---")
     st.header("💬 Ask AI about this Bill")
-
-    user_q = st.text_input("Ask a question")
+    user_q = st.text_input("Ask a specific question about a clause or rule:")
 
     if user_q:
-        with st.spinner("Thinking..."):
+        with st.spinner("Searching bill text..."):
             chat_prompt = f"""
-Answer the question based on the Parliamentary Bill text below.
+            Answer the question based on the Parliamentary Bill text below.
+            If the answer isn't in the text, say you don't know.
 
-BILL TEXT:
-{st.session_state.full_text[:20000]}
+            BILL TEXT:
+            {st.session_state.full_text[:20000]}
 
-QUESTION:
-{user_q}
-"""
+            QUESTION:
+            {user_q}
+            """
             answer = llm.invoke(chat_prompt)
-            st.write(answer.content)
+            st.chat_message("assistant").write(answer.content)
