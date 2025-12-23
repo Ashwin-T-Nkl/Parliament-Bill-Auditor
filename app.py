@@ -4,245 +4,244 @@ import os
 from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-from langchain_groq import ChatGroq
 
 # ---------------- PAGE CONFIG ----------------
-st.set_page_config(page_title="Parliament Bill Auditor", layout="wide")
+st.set_page_config(
+    page_title="Parliament Bill Auditor",
+    layout="wide"
+)
+
 st.title("🏛️ Parliament Bill Auditor")
 
 # ---------------- SESSION STATE ----------------
-if "analysis" not in st.session_state:
-    st.session_state.analysis = None
 if "view" not in st.session_state:
     st.session_state.view = None
+
+if "analysis" not in st.session_state:
+    st.session_state.analysis = None
+
 if "last_file" not in st.session_state:
     st.session_state.last_file = None
+
 if "full_text" not in st.session_state:
     st.session_state.full_text = ""
 
-# ---------------- SIMPLE BILL VALIDATION ----------------
-bill_keywords = [
-    "bill",
-    "act",
-    "speaker",
-    "parliament",
-    "parliament of india",
-    "lok sabha",
-    "loksabha",
-    "rajya sabha",
-    "rajyasabha",
-    "government of india",
-    "gazette",
-    "legislative",
-    "statement of objects",
-    "statement of objects and reasons",
-    "extent",
-    "commencement",
-    "enacted",
-    "ministry of law"
-]
-
-def is_government_bill(text):
-    text = text.lower()
-    return any(k in text for k in bill_keywords)
-
-# ---------------- PDF CREATOR ----------------
-def create_pdf(text):
-    buf = BytesIO()
-    c = canvas.Canvas(buf, pagesize=A4)
-    y = 800
-    for line in text.split("\n"):
-        if y < 40:
-            c.showPage()
-            y = 800
-        c.drawString(40, y, line[:100])
-        y -= 14
-    c.save()
-    buf.seek(0)
-    return buf
-
 # ---------------- FILE UPLOAD ----------------
-uploaded_file = st.file_uploader(
-    "Upload Government / Parliamentary Bill PDF",
-    type=["pdf"]
-)
+uploaded_file = st.file_uploader("Upload Bill PDF", type=["pdf"])
 
 if uploaded_file:
-    # reset state on new file
-    if uploaded_file.name != st.session_state.last_file:
+    # Reset state on new file
+    if st.session_state.last_file != uploaded_file.name:
         st.session_state.last_file = uploaded_file.name
         st.session_state.analysis = None
         st.session_state.view = None
         st.session_state.full_text = ""
 
     reader = PdfReader(uploaded_file)
-    text = ""
+    full_text = ""
 
     for page in reader.pages:
         try:
-            t = page.extract_text()
-            if t:
-                text += t + "\n"
+            text = page.extract_text()
+            if text:
+                full_text += text
         except:
-            pass
+            continue
 
-    st.session_state.full_text = text
+    st.session_state.full_text = full_text
 
-    if not is_government_bill(text):
-        st.error("❌ Kindly upload a valid Government / Parliamentary Bill PDF.")
-        st.stop()
-
-    # ---------------- ANALYSIS ----------------
-    if st.button("🔍 Generate Analysis"):
-        if "GROQ_API_KEY" not in os.environ:
-            st.error("AI service not configured.")
-            st.stop()
+    # ---------------- GROQ ----------------
+    if "GROQ_API_KEY" in os.environ:
+        from langchain_groq import ChatGroq
 
         llm = ChatGroq(
-            model_name="llama-3.1-8b-instant",  # IMPORTANT
+            model_name="llama-3.3-70b-versatile",
             temperature=0
         )
 
-        prompt = f"""
+        if st.button("🔍 Generate Analysis"):
+            with st.spinner("Analyzing bill..."):
+                prompt = f"""
 You are a Public Policy Analyst.
 
-Audience: 8th grade students and common citizens.
-Use very simple language.
+Your readers are 8th Grade School students and common citizens.
 
-Return EXACTLY the following headings and follow the rules strictly.
+Return clearly labeled sections using simple language.
 
 SECTOR:
-- ONE word only
+One word primary sector (e.g., Finance, Agriculture, Transport, Energy, Shipping).
 
 OBJECTIVE:
-- 3 to 5 short lines
+Explain the main objective of this bill in 3–4 simple lines.
 
-SIMPLE SUMMARY:
-- 3 to 5 short lines
-- Each line must be separate
-- Do NOT write a paragraph
-
-DETAILED SUMMARY:
-- 10 to 20 bullet points
-- Each bullet must start with a dash (-)
+SUMMARY (DETAILED):
+Provide a 10–20 bullet point explanation:
+- What the bill does
+- Why it matters
+- What changes for a normal person
 
 IMPACT ANALYSIS:
+Explain the impact separately for each group:
+
 Citizens:
-- Bullet points
+(Bullet points)
+
 Businesses:
-- Bullet points
+(Bullet points)
+
 Government:
-- Bullet points
+(Bullet points)
+
 Industries / Markets:
-- Bullet points
+(Bullet points)
+
 NGOs / Civil Society:
-- Bullet points
+(Bullet points)
 
 BENEFICIARIES:
-- Bullet points
+Clearly mention:
+- Which sectors benefit
+- Which sectors get new business or growth opportunities
 
 AFFECTED GROUPS:
-- Bullet points
+Clearly mention:
+- Which sectors face restrictions
+- Which sectors face higher costs, compliance, or limitations
 
 POSITIVES:
-- Bullet points
+(Bullet points focusing on advantages and opportunities)
 
 NEGATIVES / RISKS:
-- Bullet points
+(Bullet points focusing on risks, costs, resistance, or implementation challenges)
 
 Rules:
-- Use ONLY the bill text
-- No assumptions
-- No markdown symbols like ** or ###
+- Use only the bill text
+- Do not assume facts
+- Keep language simple
 
 BILL TEXT:
-{text[:6000]}
+{st.session_state.full_text[:12000]}
 """
+                response = llm.invoke(prompt)
+                st.session_state.analysis = response.content
+                st.session_state.view = None
 
-        with st.spinner("Analyzing bill..."):
-            st.session_state.analysis = llm.invoke(prompt).content
-            st.session_state.view = None
-
-# ---------------- NAVIGATION ----------------
+# ---------------- TILE NAVIGATION ----------------
 if st.session_state.analysis:
-    c1, c2, c3 = st.columns(3)
-    if c1.button("🏷️ Sector"):
-        st.session_state.view = "sector"
-    if c2.button("📄 Summary"):
-        st.session_state.view = "summary"
-    if c3.button("📊 Impact"):
-        st.session_state.view = "impact"
+    st.markdown("### 📌 Explore Analysis")
 
-# ---------------- EXTRACT ----------------
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        if st.button("🏷️ Sector"):
+            st.session_state.view = "sector"
+
+    with c2:
+        if st.button("📄 Summary"):
+            st.session_state.view = "summary"
+
+    with c3:
+        if st.button("📊 Impact"):
+            st.session_state.view = "impact"
+
+# ---------------- HELPER FUNCTION ----------------
 def extract(title):
-    try:
-        return st.session_state.analysis.split(title)[1].split("\n\n")[0].strip()
-    except:
+    content = st.session_state.analysis
+    if not content or title not in content:
         return "Not available"
 
-# ---------------- DISPLAY ----------------
+    text = content.split(title)[1].split("\n\n")[0]
+    text = text.replace("**", "").strip()
+    return text
+
+def generate_summary_pdf(text):
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    y = height - 50
+
+    pdf.setFont("Helvetica", 10)
+
+    for line in text.split("\n"):
+        if y < 50:
+            pdf.showPage()
+            pdf.setFont("Helvetica", 10)
+            y = height - 50
+        pdf.drawString(40, y, line[:100])
+        y -= 14
+
+    pdf.save()
+    buffer.seek(0)
+    return buffer
+
+# ---------------- CONTENT VIEW ----------------
 st.markdown("---")
 
 if st.session_state.view == "sector":
     st.header("🏷️ Sector")
-    st.write(extract("SECTOR:"))
+    st.markdown(extract("SECTOR:"))
 
 elif st.session_state.view == "summary":
     st.header("📄 Bill Summary")
 
     st.subheader("🎯 Objective")
-    st.write(extract("OBJECTIVE:"))
-
-    st.subheader("📝 Simple Summary")
-    st.write(extract("SIMPLE SUMMARY:"))
+    st.markdown(extract("OBJECTIVE:"))
 
     if st.button("📘 View Detailed Summary"):
-        detail = extract("DETAILED SUMMARY:")
-        st.write(detail)
+        st.subheader("🧾 Detailed Summary")
+        detailed_summary = extract("SUMMARY (DETAILED):")
+        st.markdown(detailed_summary)
+
+        pdf_file = generate_summary_pdf(detailed_summary)
 
         st.download_button(
-            "⬇️ Download Detailed Summary PDF",
-            create_pdf(detail),
-            "Detailed_Bill_Summary.pdf",
-            "application/pdf"
+            "⬇️ Download Detailed Summary (PDF)",
+            data=pdf_file,
+            file_name="Bill_Detailed_Summary.pdf",
+            mime="application/pdf"
         )
 
 elif st.session_state.view == "impact":
     st.header("📊 Impact Analysis")
-    st.write(extract("IMPACT ANALYSIS:"))
 
-    st.subheader("Beneficiaries")
-    st.write(extract("BENEFICIARIES:"))
+    st.subheader("Impact by Stakeholder")
+    st.markdown(extract("IMPACT ANALYSIS:"))
 
-    st.subheader("Affected Groups")
-    st.write(extract("AFFECTED GROUPS:"))
+    st.subheader("Beneficiaries (Industries & Sectors)")
+    st.markdown(extract("BENEFICIARIES:"))
+
+    st.subheader("Affected Groups (Restrictions & Costs)")
+    st.markdown(extract("AFFECTED GROUPS:"))
 
     st.subheader("Positives")
-    st.write(extract("POSITIVES:"))
+    st.markdown(extract("POSITIVES:"))
 
-    st.subheader("Risks")
-    st.write(extract("NEGATIVES / RISKS:"))
+    st.subheader("Risks / Negatives")
+    st.markdown(extract("NEGATIVES / RISKS:"))
 
-# ---------------- SIMPLE AI CHAT ----------------
-if st.session_state.analysis:
+# ---------------- AI CHAT ----------------
+if st.session_state.analysis and st.session_state.full_text:
     st.markdown("---")
-    st.header("💬 Ask about this Bill")
+    st.header("💬 Ask AI about this Bill")
 
-    q = st.text_input("Ask a question")
-    if q:
-        llm = ChatGroq(
-            model_name="llama-3.1-8b-instant",
-            temperature=0
-        )
+    user_q = st.text_input("Ask a question")
 
-        chat_prompt = f"""
-Answer ONLY using the analysis below.
-Keep the answer simple.
+    if user_q:
+        with st.spinner("Thinking..."):
+            chat_prompt = f"""
+You are answering questions based ONLY on the original Parliamentary Bill text below.
 
-ANALYSIS:
-{st.session_state.analysis}
+Rules:
+- Use only the bill text
+- Do NOT use prior summaries or analysis
+- Explain answers in simple, citizen-friendly English
+- If the bill does not mention the answer, clearly say so
+
+BILL TEXT:
+{st.session_state.full_text[:12000]}
 
 QUESTION:
-{q}
+{user_q}
 """
-        st.write(llm.invoke(chat_prompt).content)
+            answer = llm.invoke(chat_prompt)
+            st.write(answer.content)
