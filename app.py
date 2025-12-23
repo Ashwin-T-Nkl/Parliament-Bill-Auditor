@@ -22,14 +22,14 @@ def is_government_bill(text):
 
     text = text.lower()
 
-    # 1. Bill identity (must mention a Bill)
+    # 1. Bill identity (mandatory)
     bill_identity = [
-        r"\bthe .* bill\b",
         r"\bintroduction of the .* bill\b",
+        r"\bthe .* bill\b",
         r"\b.* bill, \d{4}\b"
     ]
 
-    # 2. Parliamentary context
+    # 2. Parliamentary context (mandatory)
     parliament_context = [
         r"lok sabha",
         r"rajya sabha",
@@ -38,7 +38,7 @@ def is_government_bill(text):
         r"rules of procedure"
     ]
 
-    # 3. Bill lifecycle action
+    # 3. Bill lifecycle action (mandatory)
     bill_action = [
         r"leave to introduce a bill",
         r"i introduce the bill",
@@ -70,9 +70,9 @@ def create_pdf(text):
     buf.seek(0)
     return buf
 
-# ---------------- UPLOAD ----------------
+# ---------------- FILE UPLOAD ----------------
 uploaded_file = st.file_uploader(
-    "Upload Government / Parliamentary Bill PDF (Sansad)",
+    "Upload Government / Parliamentary Bill PDF",
     type=["pdf"]
 )
 
@@ -88,9 +88,9 @@ if uploaded_file:
 
     for page in reader.pages:
         try:
-            t = page.extract_text()
-            if t:
-                text += t + "\n"
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + "\n"
         except:
             pass
 
@@ -101,7 +101,7 @@ if uploaded_file:
         st.error(
             "❌ Invalid document.\n\n"
             "Only Government / Parliamentary Bill documents "
-            "(Introduction, Debate, or Bill Text from Sansad) are allowed."
+            "(as listed under Government Bills on sansad.in) are allowed."
         )
         st.stop()
 
@@ -116,4 +116,133 @@ if uploaded_file:
 
         # 🔒 DO NOT MODIFY THIS PROMPT
         prompt = f"""
-You
+You are a Public Policy Analyst.
+
+Your audience:
+• 8th grade school students
+• Common citizens with no legal background
+
+Your task:
+Analyze ONLY the given bill text.
+Do NOT assume anything outside the bill.
+Do NOT add external knowledge.
+
+------------------------------------
+OUTPUT FORMAT (STRICT)
+------------------------------------
+Return the response using EXACTLY the following headings.
+Do NOT change heading names.
+Do NOT add extra headings.
+Do NOT add markdown (**, ###, etc).
+
+------------------------------------
+SECTOR:
+------------------------------------
+• Identify the ONE primary sector this bill belongs to
+• Use ONLY ONE WORD
+
+------------------------------------
+OBJECTIVE:
+------------------------------------
+• Explain the main objective of the bill
+• Use VERY SIMPLE language
+• 3 to 5 short lines
+
+------------------------------------
+SUMMARY (SIMPLE):
+------------------------------------
+• 3 to 5 short lines for common citizens
+
+------------------------------------
+SUMMARY (DETAILED):
+------------------------------------
+• 10 to 20 bullet points
+• Each bullet = one idea
+
+------------------------------------
+IMPACT ANALYSIS:
+------------------------------------
+Citizens:
+Businesses:
+Government:
+Industries / Markets:
+NGOs / Civil Society:
+
+------------------------------------
+BENEFICIARIES:
+------------------------------------
+• Bullet points
+
+------------------------------------
+AFFECTED GROUPS:
+------------------------------------
+• Bullet points
+
+------------------------------------
+POSITIVES:
+------------------------------------
+• Bullet points
+
+------------------------------------
+NEGATIVES / RISKS:
+------------------------------------
+• Bullet points
+
+------------------------------------
+IMPORTANT RULES:
+------------------------------------
+• Use ONLY the bill text
+• No assumptions
+• Simple language
+• No markdown
+
+------------------------------------
+BILL TEXT:
+{text[:12000]}
+"""
+
+        with st.spinner("Analyzing bill..."):
+            st.session_state.analysis = llm.invoke(prompt).content
+            st.session_state.view = None
+
+# ---------------- NAVIGATION ----------------
+if st.session_state.analysis:
+    st.markdown("### 📌 Explore Analysis")
+    c1, c2, c3 = st.columns(3)
+
+    if c1.button("🏷️ Sector"):
+        st.session_state.view = "sector"
+    if c2.button("📄 Summary"):
+        st.session_state.view = "summary"
+    if c3.button("📊 Impact"):
+        st.session_state.view = "impact"
+
+def extract(title):
+    try:
+        return st.session_state.analysis.split(title)[1].split("\n\n")[0]
+    except:
+        return "Not available"
+
+# ---------------- DISPLAY ----------------
+st.markdown("---")
+
+if st.session_state.view == "sector":
+    st.header("🏷️ Sector")
+    st.write(extract("SECTOR:"))
+
+elif st.session_state.view == "summary":
+    st.header("📄 Summary")
+    st.write(extract("SUMMARY (SIMPLE):"))
+
+    if st.button("View Detailed Summary"):
+        detail = extract("SUMMARY (DETAILED):")
+        st.write(detail)
+        st.download_button(
+            "⬇️ Download PDF",
+            create_pdf(detail),
+            "Bill_Summary.pdf"
+        )
+
+elif st.session_state.view == "impact":
+    st.header("📊 Impact")
+    st.write(extract("IMPACT ANALYSIS:"))
