@@ -24,13 +24,15 @@ if "full_text" not in st.session_state:
 # ---------------- TEXT CLEANING HELPER ----------------
 def clean_for_ai(text):
     """
-    Removes the '' tags. 
-    These numbers are the reason the AI glitches into numerical answers.
+    Removes the '' tags and backslashes. 
+    These patterns are the reason the AI glitches into numerical answers.
     """
-    # This removes any text inside square brackets like 
+    # 1. Removes any text inside square brackets like 
     cleaned = re.sub(r'\', '', text)
-    # This removes standard bracketed numbers like [110]
+    # 2. Removes standard bracketed numbers like [110]
     cleaned = re.sub(r'\[\d+\]', '', cleaned)
+    # 3. Removes literal backslashes to prevent SyntaxErrors
+    cleaned = cleaned.replace('\\', '')
     return cleaned.strip()
 
 # ---------------- FILE UPLOAD ----------------
@@ -43,6 +45,7 @@ if uploaded_file:
         st.session_state.view = None
         st.session_state.full_text = ""
 
+        # Extracting text using pypdf
         reader = PdfReader(uploaded_file)
         raw_text = ""
         for page in reader.pages:
@@ -53,21 +56,21 @@ if uploaded_file:
             except:
                 pass
         
-        # CLEAN THE TEXT BEFORE SAVING
+        # Clean text immediately after extraction
         st.session_state.full_text = clean_for_ai(raw_text)
 
+    # API Configuration
     if "GROQ_API_KEY" not in os.environ:
-        st.error("AI service not configured. Please set GROQ_API_KEY in environment variables.")
+        st.error("GROQ_API_KEY not found in environment variables.")
         st.stop()
 
     llm = ChatGroq(
         model_name="llama-3.1-8b-instant",
-        temperature=0
+        temperature=0.1  # Set to 0.1 to help avoid repeating loops
     )
 
     if st.button("🔍 Generate Analysis"):
         with st.spinner("Analyzing bill..."):
-            # YOUR EXACT PROMPT (UNCHANGED)
             prompt = f"""
 You are a Public Policy Analyst.
 Audience: 8th grade students and common citizens.
@@ -137,7 +140,7 @@ if st.session_state.analysis:
     if c3.button("📊 Impact"):
         st.session_state.view = "impact"
 
-# ---------------- HELPERS ----------------
+# ---------------- DATA EXTRACTION HELPERS ----------------
 def extract(title):
     content = st.session_state.analysis
     if not content:
@@ -163,6 +166,7 @@ def extract(title):
                 end_pos = h_idx
         
         text = remaining_content[:end_pos].strip()
+        # Remove any stray markdown
         for m in ["**", "__", "##", "###"]:
             text = text.replace(m, "")
         return text
@@ -217,30 +221,25 @@ elif st.session_state.view == "impact":
     with col_a:
         st.subheader("✅ Positives")
         st.success(extract("POSITIVES:"))
-        st.subheader("💎 Beneficiaries")
-        st.write(extract("BENEFICIARIES:"))
     with col_b:
         st.subheader("⚠️ Risks")
         st.error(extract("NEGATIVES / RISKS:"))
-        st.subheader("👥 Affected Groups")
-        st.write(extract("AFFECTED GROUPS:"))
 
-# ---------------- AI CHAT (FIXED) ----------------
+# ---------------- AI CHAT ----------------
 if st.session_state.analysis and st.session_state.full_text:
     st.markdown("---")
     st.header("💬 Ask AI about this Bill")
     user_q = st.text_input("Ask a specific question about a clause or rule:")
 
     if user_q:
-        with st.spinner("Searching bill text..."):
-            # ADDED RULES TO CHAT PROMPT TO PREVENT NUMBERS
+        with st.spinner("Thinking..."):
             chat_prompt = f"""
-            Answer the question based on the Parliamentary Bill text below.
-            If the answer isn't in the text, say you don't know.
+            Answer the question using ONLY the provided Bill text.
+            If the answer is not mentioned, say 'Not mentioned in the document'.
             
             RULES:
-            - Answer in words and full sentences.
-            - DO NOT output long sequences of numbers or source tags.
+            - Answer in full sentences.
+            - DO NOT output long lists of numbers or source tags.
 
             BILL TEXT:
             {st.session_state.full_text[:20000]}
