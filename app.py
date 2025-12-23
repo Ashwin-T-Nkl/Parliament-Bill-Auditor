@@ -7,23 +7,16 @@ from reportlab.pdfgen import canvas
 from langchain_groq import ChatGroq
 
 # ---------------- PAGE CONFIG ----------------
-st.set_page_config(
-    page_title="Parliament Bill Auditor",
-    layout="wide"
-)
-
+st.set_page_config(page_title="Parliament Bill Auditor", layout="wide")
 st.title("🏛️ Parliament Bill Auditor")
 
 # ---------------- SESSION STATE ----------------
 if "view" not in st.session_state:
     st.session_state.view = None
-
 if "analysis" not in st.session_state:
     st.session_state.analysis = None
-
 if "last_file" not in st.session_state:
     st.session_state.last_file = None
-
 if "full_text" not in st.session_state:
     st.session_state.full_text = ""
 
@@ -31,7 +24,6 @@ if "full_text" not in st.session_state:
 uploaded_file = st.file_uploader("Upload Bill PDF", type=["pdf"])
 
 if uploaded_file:
-    # Reset state on new file
     if st.session_state.last_file != uploaded_file.name:
         st.session_state.last_file = uploaded_file.name
         st.session_state.analysis = None
@@ -51,18 +43,15 @@ if uploaded_file:
 
     st.session_state.full_text = full_text
 
-    # ---------------- GROQ MODEL ----------------
     if "GROQ_API_KEY" not in os.environ:
-        st.error("GROQ_API_KEY not configured")
+        st.error("AI service not configured.")
         st.stop()
 
-    # ✅ STABLE MODEL (THIS IS IMPORTANT)
     llm = ChatGroq(
         model_name="llama-3.1-8b-instant",
         temperature=0
     )
 
-    # ---------------- ANALYSIS ----------------
     if st.button("🔍 Generate Analysis"):
         with st.spinner("Analyzing bill..."):
             prompt = f"""
@@ -76,46 +65,28 @@ SECTOR:
 One word primary sector.
 
 OBJECTIVE:
-Explain the main objective of this bill in 3–4 simple lines.
+Explain the main objective of this bill in 3–4 simple lines. Bullet Points
 
 SUMMARY (DETAILED):
-Provide a 10–20 bullet point explanation:
-- What the bill does
-- Why it matters
-- What changes for a normal person
+Provide a 10–20 bullet point explanation. Bullet Points
 
-IMPACT ANALYSIS:
+IMPACT ANALYSIS: Bullet Points
 Citizens:
-(Bullet points)
-
 Businesses:
-(Bullet points)
-
 Government:
-(Bullet points)
-
 Industries / Markets:
-(Bullet points)
-
 NGOs / Civil Society:
-(Bullet points)
 
-BENEFICIARIES:
-(Bullet points)
-
+BENEFICIARIES: Bullet Points
 AFFECTED GROUPS:
-(Bullet points)
-
 POSITIVES:
-(Bullet points)
-
 NEGATIVES / RISKS:
-(Bullet points)
 
 Rules:
 - Use only the bill text
 - Do not assume facts
 - Keep language simple
+Bullet Points
 
 BILL TEXT:
 {st.session_state.full_text[:20000]}
@@ -124,27 +95,31 @@ BILL TEXT:
             st.session_state.analysis = response.content
             st.session_state.view = None
 
-# ---------------- TILE NAVIGATION ----------------
+# ---------------- NAVIGATION ----------------
 if st.session_state.analysis:
     st.markdown("### 📌 Explore Analysis")
-
     c1, c2, c3 = st.columns(3)
 
     if c1.button("🏷️ Sector"):
         st.session_state.view = "sector"
-
     if c2.button("📄 Summary"):
         st.session_state.view = "summary"
-
     if c3.button("📊 Impact"):
         st.session_state.view = "impact"
 
-# ---------------- HELPER ----------------
+# ---------------- DISPLAY CLEANER ----------------
 def extract(title):
     content = st.session_state.analysis
     if not content or title not in content:
         return "Not available"
-    return content.split(title)[1].split("\n\n")[0].strip()
+
+    text = content.split(title)[1].split("\n\n")[0]
+
+    # CLEAN MARKDOWN JUNK (DISPLAY ONLY)
+    for m in ["**", "__", "##", "###", "*"]:
+        text = text.replace(m, "")
+
+    return text.strip()
 
 def generate_summary_pdf(text):
     buffer = BytesIO()
@@ -155,7 +130,6 @@ def generate_summary_pdf(text):
     for line in text.split("\n"):
         if y < 40:
             pdf.showPage()
-            pdf.setFont("Helvetica", 10)
             y = 800
         pdf.drawString(40, y, line[:100])
         y -= 14
@@ -164,7 +138,7 @@ def generate_summary_pdf(text):
     buffer.seek(0)
     return buffer
 
-# ---------------- CONTENT VIEW ----------------
+# ---------------- CONTENT ----------------
 st.markdown("---")
 
 if st.session_state.view == "sector":
@@ -179,7 +153,6 @@ elif st.session_state.view == "summary":
     if st.button("📘 View Detailed Summary"):
         detail = extract("SUMMARY (DETAILED):")
         st.write(detail)
-
         st.download_button(
             "⬇️ Download Detailed Summary (PDF)",
             generate_summary_pdf(detail),
@@ -189,6 +162,8 @@ elif st.session_state.view == "summary":
 
 elif st.session_state.view == "impact":
     st.header("📊 Impact Analysis")
+
+    st.subheader("Impact")
     st.write(extract("IMPACT ANALYSIS:"))
 
     st.subheader("Beneficiaries")
@@ -203,7 +178,7 @@ elif st.session_state.view == "impact":
     st.subheader("Risks")
     st.write(extract("NEGATIVES / RISKS:"))
 
-# ---------------- AI CHAT (NO RESTRICTIONS) ----------------
+# ---------------- AI CHAT (UNCHANGED) ----------------
 if st.session_state.analysis and st.session_state.full_text:
     st.markdown("---")
     st.header("💬 Ask AI about this Bill")
@@ -214,7 +189,6 @@ if st.session_state.analysis and st.session_state.full_text:
         with st.spinner("Thinking..."):
             chat_prompt = f"""
 Answer the question based on the Parliamentary Bill text below.
-Use the bill text to answer.
 
 BILL TEXT:
 {st.session_state.full_text[:20000]}
