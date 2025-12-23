@@ -1,6 +1,9 @@
 import streamlit as st
 from pypdf import PdfReader
 import os
+from io import BytesIO
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
 from langchain_groq import ChatGroq
 
 # ---------------- PAGE CONFIG ----------------
@@ -17,7 +20,7 @@ if "last_file" not in st.session_state:
 if "full_text" not in st.session_state:
     st.session_state.full_text = ""
 
-# ---------------- SIMPLE KEYWORD VALIDATION ----------------
+# ---------------- SIMPLE BILL VALIDATION ----------------
 bill_keywords = [
     "bill",
     "act",
@@ -43,6 +46,21 @@ def is_government_bill(text):
     text = text.lower()
     return any(k in text for k in bill_keywords)
 
+# ---------------- PDF CREATOR ----------------
+def create_pdf(text):
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    y = 800
+    for line in text.split("\n"):
+        if y < 40:
+            c.showPage()
+            y = 800
+        c.drawString(40, y, line[:100])
+        y -= 14
+    c.save()
+    buf.seek(0)
+    return buf
+
 # ---------------- FILE UPLOAD ----------------
 uploaded_file = st.file_uploader(
     "Upload Government / Parliamentary Bill PDF",
@@ -50,7 +68,7 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file:
-    # reset on new file
+    # reset state on new file
     if uploaded_file.name != st.session_state.last_file:
         st.session_state.last_file = uploaded_file.name
         st.session_state.analysis = None
@@ -81,7 +99,7 @@ if uploaded_file:
             st.stop()
 
         llm = ChatGroq(
-            model_name="llama-3.1-8b-instant",
+            model_name="llama-3.1-8b-instant",  # IMPORTANT
             temperature=0
         )
 
@@ -91,40 +109,51 @@ You are a Public Policy Analyst.
 Audience: 8th grade students and common citizens.
 Use very simple language.
 
-Return EXACTLY these headings:
+Return EXACTLY the following headings and follow the rules strictly.
 
 SECTOR:
-(One word)
+- ONE word only
 
 OBJECTIVE:
-(3–5 simple lines)
+- 3 to 5 short lines
 
-SUMMARY:
-(10–20 bullet points)
+SIMPLE SUMMARY:
+- 3 to 5 short lines
+- Each line must be separate
+- Do NOT write a paragraph
+
+DETAILED SUMMARY:
+- 10 to 20 bullet points
+- Each bullet must start with a dash (-)
 
 IMPACT ANALYSIS:
 Citizens:
+- Bullet points
 Businesses:
+- Bullet points
 Government:
+- Bullet points
 Industries / Markets:
+- Bullet points
 NGOs / Civil Society:
+- Bullet points
 
 BENEFICIARIES:
-(Bullet points)
+- Bullet points
 
 AFFECTED GROUPS:
-(Bullet points)
+- Bullet points
 
 POSITIVES:
-(Bullet points)
+- Bullet points
 
 NEGATIVES / RISKS:
-(Bullet points)
+- Bullet points
 
 Rules:
-- Use only the bill text
+- Use ONLY the bill text
 - No assumptions
-- No markdown symbols
+- No markdown symbols like ** or ###
 
 BILL TEXT:
 {text[:6000]}
@@ -147,7 +176,7 @@ if st.session_state.analysis:
 # ---------------- EXTRACT ----------------
 def extract(title):
     try:
-        return st.session_state.analysis.split(title)[1].split("\n\n")[0]
+        return st.session_state.analysis.split(title)[1].split("\n\n")[0].strip()
     except:
         return "Not available"
 
@@ -159,22 +188,42 @@ if st.session_state.view == "sector":
     st.write(extract("SECTOR:"))
 
 elif st.session_state.view == "summary":
-    st.header("📄 Summary")
-    st.write(extract("SUMMARY:"))
+    st.header("📄 Bill Summary")
+
+    st.subheader("🎯 Objective")
+    st.write(extract("OBJECTIVE:"))
+
+    st.subheader("📝 Simple Summary")
+    st.write(extract("SIMPLE SUMMARY:"))
+
+    if st.button("📘 View Detailed Summary"):
+        detail = extract("DETAILED SUMMARY:")
+        st.write(detail)
+
+        st.download_button(
+            "⬇️ Download Detailed Summary PDF",
+            create_pdf(detail),
+            "Detailed_Bill_Summary.pdf",
+            "application/pdf"
+        )
 
 elif st.session_state.view == "impact":
     st.header("📊 Impact Analysis")
     st.write(extract("IMPACT ANALYSIS:"))
+
     st.subheader("Beneficiaries")
     st.write(extract("BENEFICIARIES:"))
+
     st.subheader("Affected Groups")
     st.write(extract("AFFECTED GROUPS:"))
+
     st.subheader("Positives")
     st.write(extract("POSITIVES:"))
+
     st.subheader("Risks")
     st.write(extract("NEGATIVES / RISKS:"))
 
-# ---------------- SIMPLE CHAT ----------------
+# ---------------- SIMPLE AI CHAT ----------------
 if st.session_state.analysis:
     st.markdown("---")
     st.header("💬 Ask about this Bill")
@@ -188,6 +237,7 @@ if st.session_state.analysis:
 
         chat_prompt = f"""
 Answer ONLY using the analysis below.
+Keep the answer simple.
 
 ANALYSIS:
 {st.session_state.analysis}
