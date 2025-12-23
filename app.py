@@ -21,10 +21,15 @@ if "last_file" not in st.session_state:
 if "full_text" not in st.session_state:
     st.session_state.full_text = ""
 
-# ---------------- TEXT CLEANING HELPER ----------------
-def clean_pdf_text(text):
-    """Removes tags which cause the AI to output numbers."""
-    return re.sub(r'\\', '', text)
+# ---------------- AGGRESSIVE TEXT CLEANING ----------------
+def deep_clean_text(text):
+    # 1. Remove or [123] patterns
+    text = re.sub(r'\[.*?\]', '', text)
+    # 2. Remove literal backslashes (Fixes your previous SyntaxError)
+    text = text.replace('\\', '')
+    # 3. Remove excessive whitespace
+    text = re.sub(r'\s+', ' ', text)
+    return text.strip()
 
 # ---------------- FILE UPLOAD ----------------
 uploaded_file = st.file_uploader("Upload Bill PDF", type=["pdf"])
@@ -40,138 +45,91 @@ if uploaded_file:
         for page in reader.pages:
             try:
                 content = page.extract_text()
-                if content:
-                    raw_text += content + "\n"
-            except:
-                pass
+                if content: raw_text += content + "\n"
+            except: pass
         
-        # FIX 1: Clean the text immediately after extraction
-        st.session_state.full_text = clean_pdf_text(raw_text)
+        # Clean the text to remove the "Number Trigger"
+        st.session_state.full_text = deep_clean_text(raw_text)
 
     if "GROQ_API_KEY" not in os.environ:
-        st.error("AI service not configured. Please set GROQ_API_KEY.")
+        st.error("Please set GROQ_API_KEY.")
         st.stop()
 
-    # FIX 2: Set temperature to 0.1 to avoid repetitive looping
-    llm = ChatGroq(
-        model_name="llama-3.1-8b-instant",
-        temperature=0.1 
-    )
+    # Temperature 0.2 helps break loops while staying accurate
+    llm = ChatGroq(model_name="llama-3.1-8b-instant", temperature=0.2)
 
     if st.button("🔍 Generate Analysis"):
-        with st.spinner("Analyzing bill..."):
+        with st.spinner("Analyzing..."):
             prompt = f"""
-You are a Public Policy Analyst. 
-Audience: 8th grade students. Use very simple language.
+            You are a Policy Expert. 
+            Analyze the Bill text. 
+            
+            STRICT RULES:
+            1. DO NOT output lists of numbers like '1, 2, 3...'.
+            2. USE WORDS ONLY for your response.
+            3. If info is missing, say 'Not Found'.
+            4. Start your response exactly with the word: 'ANALYSIS:'
 
-Rules:
-- DO NOT output long lists of numbers or source indices.
-- DO NOT use markdown symbols like ** or ###.
-- Use only the provided text.
+            HEADINGS TO USE:
+            SECTOR:
+            OBJECTIVE:
+            SIMPLE SUMMARY:
+            DETAILED SUMMARY:
+            IMPACT ANALYSIS:
+            POSITIVES:
+            NEGATIVES / RISKS:
 
-Return exactly these headings:
-SECTOR:
-OBJECTIVE:
-SIMPLE SUMMARY:
-DETAILED SUMMARY:
-IMPACT ANALYSIS:
-BENEFICIARIES:
-AFFECTED GROUPS:
-POSITIVES:
-NEGATIVES / RISKS:
-
-BILL TEXT:
-{st.session_state.full_text[:20000]}
-"""
+            TEXT: {st.session_state.full_text[:15000]}
+            """
             response = llm.invoke(prompt)
-            st.session_state.analysis = response.content
+            # Remove the "ANALYSIS:" prefix for display
+            st.session_state.analysis = response.content.replace("ANALYSIS:", "").strip()
             st.session_state.view = None
-
-# ---------------- NAVIGATION ----------------
-if st.session_state.analysis:
-    st.markdown("---")
-    st.markdown("### 📌 Explore Analysis")
-    c1, c2, c3 = st.columns(3)
-    if c1.button("🏷️ Sector"): st.session_state.view = "sector"
-    if c2.button("📄 Summary"): st.session_state.view = "summary"
-    if c3.button("📊 Impact"): st.session_state.view = "impact"
 
 # ---------------- HELPERS ----------------
 def extract(title):
     content = st.session_state.analysis
     if not content or title not in content:
-        return "Not mentioned in document."
-    
+        return "Not available."
     parts = content.split(title)
     if len(parts) > 1:
-        # Get text until the next uppercase heading
-        text = re.split(r'\n[A-Z\s/]+:', parts[1])[0]
+        # Stop reading at the next newline that looks like a heading
+        text = re.split(r'\n[A-Z\s]+:', parts[1])[0]
         return text.strip()
-    return "Not available."
+    return "Not found."
 
-def generate_summary_pdf(text):
-    buffer = BytesIO()
-    pdf = canvas.Canvas(buffer, pagesize=A4)
-    y = 800
-    pdf.setFont("Helvetica", 10)
-    for line in text.split("\n"):
-        if y < 40:
-            pdf.showPage()
-            y = 800
-        pdf.drawString(40, y, line[:100])
-        y -= 14
-    pdf.save()
-    buffer.seek(0)
-    return buffer
-
-# ---------------- CONTENT DISPLAY ----------------
-st.markdown("---")
-if st.session_state.view == "sector":
-    st.header("🏷️ Sector")
-    st.info(extract("SECTOR:"))
-
-elif st.session_state.view == "summary":
-    st.header("📄 Bill Summary")
-    st.subheader("🎯 Objective")
-    st.write(extract("OBJECTIVE:"))
-    st.subheader("💡 Simple Overview")
-    st.write(extract("SIMPLE SUMMARY:"))
-    with st.expander("📘 View Detailed Summary"):
-        detail = extract("DETAILED SUMMARY:")
-        st.write(detail)
-        st.download_button("⬇️ Download PDF", generate_summary_pdf(detail), "Summary.pdf")
-
-elif st.session_state.view == "impact":
-    st.header("📊 Impact Analysis")
-    st.write(extract("IMPACT ANALYSIS:"))
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.subheader("✅ Positives")
-        st.success(extract("POSITIVES:"))
-    with col_b:
-        st.subheader("⚠️ Risks")
-        st.error(extract("NEGATIVES / RISKS:"))
-
-# ---------------- AI CHAT ----------------
-if st.session_state.analysis and st.session_state.full_text:
+# ---------------- NAVIGATION & DISPLAY ----------------
+if st.session_state.analysis:
     st.markdown("---")
-    st.header("💬 Ask AI about this Bill")
-    user_q = st.text_input("Ask a question:")
+    c1, c2, c3 = st.columns(3)
+    if c1.button("🏷️ Sector"): st.session_state.view = "sector"
+    if c2.button("📄 Summary"): st.session_state.view = "summary"
+    if c3.button("📊 Impact"): st.session_state.view = "impact"
 
+    st.markdown("---")
+    if st.session_state.view == "sector":
+        st.info(extract("SECTOR:"))
+    elif st.session_state.view == "summary":
+        st.subheader("Objective")
+        st.write(extract("OBJECTIVE:"))
+        st.subheader("Detailed Summary")
+        st.write(extract("DETAILED SUMMARY:"))
+    elif st.session_state.view == "impact":
+        st.success(f"Positives: {extract('POSITIVES:')}")
+        st.error(f"Risks: {extract('NEGATIVES / RISKS:')}")
+
+# ---------------- CHAT ----------------
+if st.session_state.analysis:
+    st.header("💬 Ask a Question")
+    user_q = st.text_input("Example: Who proposed this bill?")
     if user_q:
-        with st.spinner("Thinking..."):
-            # FIX 3: Strict Chat Prompt
-            chat_prompt = f"""
-            Answer the question using the Bill text. 
-            If not mentioned, say 'Not mentioned in the document'.
-            DO NOT output numbers or tokens. Use full sentences.
-
-            BILL TEXT:
-            {st.session_state.full_text[:20000]}
-
-            QUESTION:
-            {user_q}
-            """
-            answer = llm.invoke(chat_prompt)
-            st.chat_message("assistant").write(answer.content)
-
+        chat_prompt = f"""
+        Answer using the Bill text. 
+        DO NOT use numbers or source tags. 
+        Use complete sentences.
+        If not found, say 'Not in document'.
+        
+        TEXT: {st.session_state.full_text[:15000]}
+        QUESTION: {user_q}
+        """
+        st.chat_message("assistant").write(llm.invoke(chat_prompt).content)
