@@ -1,3 +1,4 @@
+
 import streamlit as st
 from pypdf import PdfReader
 import os
@@ -71,26 +72,41 @@ if uploaded_file:
 
         with st.spinner("Analyzing bill..."):
             prompt = f"""
-You are a Public Policy Analyst.
+                You are a Public Policy Analyst.
 
-Explain this bill in simple language.
+                Your readers are 8th Grade School students and common citizens.
 
-SECTOR:
-OBJECTIVE (3–4 lines)
-SUMMARY (10–15 bullet points)
-IMPACT:
-Citizens
-Businesses
-Government
-Industries
-NGOs
-BENEFICIARIES
-AFFECTED GROUPS
-POSITIVES
-NEGATIVES
+                Return clearly labeled sections using simple language.
 
-Use only the bill text.
+                SECTOR:
+                One word primary sector.
 
+                OBJECTIVE:
+                Explain the main objective of this bill in 3–4 simple lines.
+
+                SUMMARY (DETAILED):
+                10–20 bullet points explaining:
+                - What the bill does
+                - Why it matters
+                - What changes for a normal person
+
+                IMPACT ANALYSIS:
+                Citizens:
+                Businesses:
+                Government:
+                Industries / Markets:
+                NGOs / Civil Society:
+
+                BENEFICIARIES:
+                Which sectors benefit or gain opportunities.
+
+                AFFECTED GROUPS:
+                Which sectors face restrictions or costs.
+
+                POSITIVES:
+                NEGATIVES / RISKS:
+
+                Use only the bill text.
 BILL TEXT:
 {text[:12000]}
 """
@@ -165,3 +181,7 @@ QUESTION:
 {q}
 """)
         st.write(ans.content)
+
+
+
+
