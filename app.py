@@ -20,7 +20,10 @@ if "full_text" not in st.session_state:
     st.session_state.full_text = ""
 
 # ---------------- FILE UPLOAD ----------------
-uploaded_file = st.file_uploader(" ", type=["pdf"])
+uploaded_file = st.file_uploader(
+    "Upload Government / Parliamentary Bill PDF",
+    type=["pdf"]
+)
 
 if uploaded_file:
     # Reset state on new file
@@ -47,14 +50,17 @@ if uploaded_file:
     if st.button("🔍 Generate Analysis"):
         text = full_text[:12000].lower()
 
-        # -------- MERGED LEGISLATIVE / OFFICIAL MARKERS --------
-        bill_markers = [
+        # ---- BALANCED GOVERNMENT BILL VALIDATION ----
+        legal_drafting_signals = [
             "be it enacted by parliament",
             "it is hereby enacted",
             "this act may be called",
             "shall come into force",
             "notwithstanding anything contained",
             "may, by notification",
+        ]
+
+        parliamentary_signals = [
             "lok sabha",
             "rajya sabha",
             "gazette of india",
@@ -65,28 +71,30 @@ if uploaded_file:
             "arrangement of clauses",
             "financial memorandum",
             "memorandum regarding delegated legislation",
-            "president's recommendation",
-            "president's recommendation",
+            "bill no.",
+            "ministry of law",
             "government of india press",
-            "bill no."
         ]
 
-        match_count = sum(1 for marker in bill_markers if marker in text)
+        legal_match = any(p in text for p in legal_drafting_signals)
+        parliament_match = any(p in text for p in parliamentary_signals)
 
-        # Require multiple legislative signals
-        is_bill = match_count >= 3
+        is_bill = legal_match and parliament_match
 
         if not is_bill:
             st.warning("📄 Kindly upload an official Government / Parliamentary Bill PDF.")
             st.stop()
 
-        # -------- GROQ LLM --------
+        # ---------------- GROQ LLM ----------------
         if "GROQ_API_KEY" not in os.environ:
             st.error("AI service is not configured.")
             st.stop()
 
         from langchain_groq import ChatGroq
-        llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0)
+        llm = ChatGroq(
+            model_name="llama-3.3-70b-versatile",
+            temperature=0
+        )
 
         with st.spinner("Analyzing bill..."):
             prompt = f"""
@@ -136,14 +144,17 @@ BILL TEXT:
 # ---------------- TILE NAVIGATION ----------------
 if st.session_state.analysis:
     st.markdown("### 📌 Explore Analysis")
+
     c1, c2, c3 = st.columns(3)
 
     with c1:
         if st.button("🏷️ Sector"):
             st.session_state.view = "sector"
+
     with c2:
         if st.button("📄 Summary"):
             st.session_state.view = "summary"
+
     with c3:
         if st.button("📊 Impact"):
             st.session_state.view = "impact"
@@ -182,6 +193,7 @@ if st.session_state.view == "sector":
 
 elif st.session_state.view == "summary":
     st.header("📄 Bill Summary")
+
     st.subheader("🎯 Objective")
     st.markdown(extract("OBJECTIVE:"))
 
@@ -198,12 +210,16 @@ elif st.session_state.view == "summary":
 elif st.session_state.view == "impact":
     st.header("📊 Impact Analysis")
     st.markdown(extract("IMPACT ANALYSIS:"))
+
     st.subheader("Beneficiaries")
     st.markdown(extract("BENEFICIARIES:"))
+
     st.subheader("Affected Groups")
     st.markdown(extract("AFFECTED GROUPS:"))
+
     st.subheader("Positives")
     st.markdown(extract("POSITIVES:"))
+
     st.subheader("Risks")
     st.markdown(extract("NEGATIVES / RISKS:"))
 
@@ -220,7 +236,7 @@ if st.session_state.analysis:
 
         answer = llm.invoke(f"""
 Answer ONLY using the bill text below.
-If not found, clearly say so.
+If the information is not present, clearly say so.
 
 BILL TEXT:
 {st.session_state.full_text[:12000]}
