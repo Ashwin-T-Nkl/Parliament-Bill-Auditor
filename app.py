@@ -14,7 +14,7 @@ st.title("🏛️ Parliament Bill Auditor")
 if "view" not in st.session_state:
     st.session_state.view = None
 if "analysis" not in st.session_state:
-    st.session_state.analysis = None
+    st.session_state.analysis = ""
 if "last_file" not in st.session_state:
     st.session_state.last_file = None
 if "full_text" not in st.session_state:
@@ -57,12 +57,16 @@ def is_government_bill(text):
     )
 
 # ---------------- FILE UPLOAD ----------------
-uploaded_file = st.file_uploader("Upload Government / Parliamentary Bill PDF", type=["pdf"])
+uploaded_file = st.file_uploader(
+    "Upload Government / Parliamentary Bill PDF",
+    type=["pdf"]
+)
 
 if uploaded_file:
+    # 🔴 HARD RESET (FIX)
     if st.session_state.last_file != uploaded_file.name:
         st.session_state.last_file = uploaded_file.name
-        st.session_state.analysis = None
+        st.session_state.analysis = ""      # ✅ FIXED
         st.session_state.view = None
         st.session_state.full_text = ""
 
@@ -97,7 +101,6 @@ if uploaded_file:
         from langchain_groq import ChatGroq
         llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0)
 
-        # 🔒 DETAILED PROMPT (UNCHANGED IN SPIRIT)
         prompt = f"""
 You are a Public Policy Analyst.
 
@@ -265,4 +268,3 @@ QUESTION:
 {q}
 """)
         st.write(ans.content)
-
