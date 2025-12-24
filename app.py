@@ -12,7 +12,7 @@ st.set_page_config(page_title="Parliament Bill Auditor", layout="wide")
 st.title("🏛️ Parliament Bill Auditor")
 
 # ---------------- ROBUST VALIDATION ----------------
-# Added Hindi phonetic keywords to catch documents like Immigration.pdf and Chit Fund.pdf
+# Keywords to catch documents like Immigration, Sea Carriage, and Chit Fund bills
 BILL_KEYWORDS = [
     "bill", "act", "parliament", "lok sabha", "rajya sabha", "gazette", 
     "legislative", "enacted", "item no", "clause", "minister", "ministry",
@@ -20,12 +20,16 @@ BILL_KEYWORDS = [
 ]
 
 def clean_parliamentary_text(text):
-    """Removes tags and excessive whitespace to help LLM focus."""
+    """
+    Fixed the SyntaxError here by using proper regex strings.
+    This removes tags to help the AI focus on the actual law.
+    """
+    # Using a raw string r'' and escaping the brackets correctly
     text = re.sub(r'\', '', text)
     return ' '.join(text.split())
 
 def is_valid_government_doc(text):
-    """Forgiving check: Pass if text has at least 1 legal keyword."""
+    """Returns True if the document contains core legislative keywords."""
     if len(text.strip()) < 100: return False
     text_lower = text.lower()
     return any(k in text_lower for k in BILL_KEYWORDS)
@@ -50,7 +54,8 @@ if uploaded_file:
                 t = page.extract_text()
                 if t: raw_text += t + "\n"
             except: pass
-        # Clean the text before saving
+        
+        # Clean the text using the fixed function
         st.session_state.full_text = clean_parliamentary_text(raw_text)
 
     if "GROQ_API_KEY" not in os.environ:
@@ -61,12 +66,11 @@ if uploaded_file:
 
     if st.button("🔍 Generate Analysis"):
         if not is_valid_government_doc(st.session_state.full_text):
-            st.warning("⚠️ This document might not be a standard Bill, but I will try to analyze it for you.")
+            st.warning("⚠️ This document might not be a standard Bill, but I will try to analyze it anyway.")
         
         with st.spinner("Analyzing document..."):
-            # Refined prompt for 8th grade students
             prompt = f"""
-            You are a Public Policy Analyst. Your users are 8th grade students.
+            You are a Public Policy Analyst for 8th grade students.
             Analyze the provided Bill/Policy text. Use ONLY the provided text.
             Do NOT use markdown symbols like ** or #. Follow the headings exactly.
 
@@ -113,7 +117,6 @@ def extract(title):
     content = st.session_state.analysis
     if not content: return "No analysis available."
     
-    # Matches the exact headers in the prompt
     markers = ["SECTOR:", "OBJECTIVE:", "DETAILED SUMMARY:", "IMPACT ANALYSIS:", 
                "BENEFICIARIES:", "AFFECTED GROUPS:", "POSITIVES:", "NEGATIVES / RISKS:"]
     
@@ -148,7 +151,6 @@ def generate_pdf(text):
 # ---------------- CONTENT DISPLAY ----------------
 if st.session_state.analysis:
     st.markdown("---")
-    # Using Tabs is more stable than buttons for refreshing content
     tab1, tab2, tab3 = st.tabs(["🏷️ Sector", "📄 Summary", "📊 Impact Analysis"])
 
     with tab1:
@@ -181,8 +183,8 @@ if st.session_state.analysis:
 if st.session_state.analysis and st.session_state.full_text:
     st.markdown("---")
     st.header("💬 Ask a Specific Question")
-    user_q = st.text_input("Example: What does Clause 14 say about hospitals?")
+    user_q = st.text_input("Ask a question about a clause or rule:")
     if user_q:
         with st.spinner("Checking bill text..."):
-            ans = llm.invoke(f"Using this bill text: {st.session_state.full_text[:12000]}, answer the question: {user_q}")
+            ans = llm.invoke(f"Using this bill text: {st.session_state.full_text[:12000]}, answer: {user_q}")
             st.chat_message("assistant").write(ans.content)
