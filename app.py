@@ -12,20 +12,21 @@ st.set_page_config(page_title="Parliament Bill Auditor", layout="wide")
 st.title("🏛️ Parliament Bill Auditor")
 
 # ---------------- ROBUST VALIDATION ----------------
+# Added Hindi phonetic keywords to catch documents like Immigration.pdf and Chit Fund.pdf
 BILL_KEYWORDS = [
     "bill", "act", "parliament", "lok sabha", "rajya sabha", "gazette", 
     "legislative", "enacted", "item no", "clause", "minister", "ministry",
-    "objects and reasons", "viniyamit", "vidheyak" # Added Hindi phonetic keywords
+    "objects and reasons", "vidheyak", "adhiniyam", "prastav", "purasthapit"
 ]
 
-def clean_text(text):
-    """Removes tags and excessive whitespace."""
+def clean_parliamentary_text(text):
+    """Removes tags and excessive whitespace to help LLM focus."""
     text = re.sub(r'\', '', text)
     return ' '.join(text.split())
 
-def is_valid_doc(text):
-    """Forgiving check: Pass if text is long enough and has at least 1 keyword."""
-    if len(text.strip()) < 200: return False
+def is_valid_government_doc(text):
+    """Forgiving check: Pass if text has at least 1 legal keyword."""
+    if len(text.strip()) < 100: return False
     text_lower = text.lower()
     return any(k in text_lower for k in BILL_KEYWORDS)
 
@@ -45,105 +46,143 @@ if uploaded_file:
         reader = PdfReader(uploaded_file)
         raw_text = ""
         for page in reader.pages:
-            t = page.extract_text()
-            if t: raw_text += t + "\n"
-        st.session_state.full_text = clean_text(raw_text)
+            try:
+                t = page.extract_text()
+                if t: raw_text += t + "\n"
+            except: pass
+        # Clean the text before saving
+        st.session_state.full_text = clean_parliamentary_text(raw_text)
 
     if "GROQ_API_KEY" not in os.environ:
-        st.error("Please set GROQ_API_KEY.")
+        st.error("AI service not configured. Please set GROQ_API_KEY in environment variables.")
         st.stop()
 
     llm = ChatGroq(model_name="llama-3.1-8b-instant", temperature=0)
 
     if st.button("🔍 Generate Analysis"):
-        if not is_valid_doc(st.session_state.full_text):
-            st.warning("⚠️ Document might not be a standard Bill, but I will try to analyze it anyway.")
+        if not is_valid_government_doc(st.session_state.full_text):
+            st.warning("⚠️ This document might not be a standard Bill, but I will try to analyze it for you.")
         
         with st.spinner("Analyzing document..."):
+            # Refined prompt for 8th grade students
             prompt = f"""
-            You are a Public Policy Analyst for 8th graders.
-            Analyze this Bill/Policy text. Use ONLY the text provided.
-            Do NOT use markdown symbols like ** or #.
+            You are a Public Policy Analyst. Your users are 8th grade students.
+            Analyze the provided Bill/Policy text. Use ONLY the provided text.
+            Do NOT use markdown symbols like ** or #. Follow the headings exactly.
 
-            SECTOR: (Agri/Finance/Education/Healthcare/Tech/Environment/Defence/Other)
-            OBJECTIVE: (3-5 lines)
-            DETAILED SUMMARY: (10-20 bullets)
+            SECTOR:
+            (Agri / Finance / Education / Healthcare / Tech / Environment / Defence / Other)
+
+            OBJECTIVE:
+            (3 to 5 short lines explaining why this bill exists)
+
+            DETAILED SUMMARY:
+            (10 to 20 simple bullet points)
+
             IMPACT ANALYSIS:
-            Citizens: (Bullets)
-            Businesses: (Bullets)
-            Government: (Bullets)
-            BENEFICIARIES: (Bullets)
-            AFFECTED GROUPS: (Bullets)
-            POSITIVES: (Bullets)
-            NEGATIVES / RISKS: (Bullets)
+            Citizens:
+            - Bullet points
+            Businesses:
+            - Bullet points
+            Government:
+            - Bullet points
 
-            TEXT: {st.session_state.full_text[:18000]}
+            BENEFICIARIES:
+            - Bullet points
+
+            AFFECTED GROUPS:
+            - Bullet points
+
+            POSITIVES:
+            - Bullet points
+
+            NEGATIVES / RISKS:
+            - Bullet points
+
+            TEXT TO ANALYZE:
+            {st.session_state.full_text[:18000]}
             """
-            response = llm.invoke(prompt)
-            st.session_state.analysis = response.content
+            try:
+                response = llm.invoke(prompt)
+                st.session_state.analysis = response.content
+            except Exception as e:
+                st.error(f"AI Error: {e}")
 
-# ---------------- HELPERS ----------------
+# ---------------- EXTRACTION HELPER ----------------
 def extract(title):
     content = st.session_state.analysis
-    if not content: return "No data available."
+    if not content: return "No analysis available."
+    
+    # Matches the exact headers in the prompt
     markers = ["SECTOR:", "OBJECTIVE:", "DETAILED SUMMARY:", "IMPACT ANALYSIS:", 
                "BENEFICIARIES:", "AFFECTED GROUPS:", "POSITIVES:", "NEGATIVES / RISKS:"]
+    
     try:
         start = content.find(title)
         if start == -1: return "Section not found."
         start += len(title)
+        
         end = len(content)
         for m in markers:
             pos = content.find(m, start)
-            if pos != -1 and pos < end: end = pos
+            if pos != -1 and pos < end:
+                end = pos
+        
         return content[start:end].strip()
-    except: return "Extraction error."
+    except:
+        return "Error parsing section."
 
-def generate_summary_pdf(text):
+def generate_pdf(text):
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4)
     y = 800
     pdf.setFont("Helvetica", 10)
     for line in text.split("\n"):
         if y < 50: pdf.showPage(); y = 800
-        pdf.drawString(50, y, line[:95]); y -= 15
-    pdf.save(); buffer.seek(0)
+        pdf.drawString(50, y, line[:95])
+        y -= 15
+    pdf.save()
+    buffer.seek(0)
     return buffer
 
 # ---------------- CONTENT DISPLAY ----------------
 if st.session_state.analysis:
     st.markdown("---")
-    # Using Tabs for better stability over buttons
-    tab1, tab2, tab3 = st.tabs(["🏷️ Sector", "📄 Summary", "📊 Impact"])
+    # Using Tabs is more stable than buttons for refreshing content
+    tab1, tab2, tab3 = st.tabs(["🏷️ Sector", "📄 Summary", "📊 Impact Analysis"])
 
     with tab1:
+        st.header("🏷️ Identified Sector")
         st.info(extract("SECTOR:"))
 
     with tab2:
-        st.subheader("🎯 Objective")
+        st.header("📄 Bill Summary")
+        st.subheader("🎯 Main Objective")
         st.write(extract("OBJECTIVE:"))
-        with st.expander("📘 Detailed Summary", expanded=True):
-            detail = extract("DETAILED SUMMARY:")
-            st.write(detail)
-            st.download_button("⬇️ Download PDF", generate_summary_pdf(detail), "Bill_Summary.pdf")
+        
+        st.subheader("💡 Key Provisions")
+        detail = extract("DETAILED SUMMARY:")
+        st.write(detail)
+        st.download_button("⬇️ Download Summary PDF", generate_pdf(detail), "Detailed_Summary.pdf")
 
     with tab3:
-        st.subheader("📊 Impact Analysis")
+        st.header("📊 Impact & Risks")
         st.write(extract("IMPACT ANALYSIS:"))
-        c_a, c_b = st.columns(2)
-        with c_a:
+        
+        col1, col2 = st.columns(2)
+        with col1:
             st.success("✅ Positives\n\n" + extract("POSITIVES:"))
-            st.write("**Beneficiaries:**", extract("BENEFICIARIES:"))
-        with c_b:
+            st.write("**💎 Who gains?**\n", extract("BENEFICIARIES:"))
+        with col2:
             st.error("⚠️ Risks\n\n" + extract("NEGATIVES / RISKS:"))
-            st.write("**Affected Groups:**", extract("AFFECTED GROUPS:"))
+            st.write("**👥 Who is affected?**\n", extract("AFFECTED GROUPS:"))
 
 # ---------------- AI CHAT ----------------
-if st.session_state.analysis:
+if st.session_state.analysis and st.session_state.full_text:
     st.markdown("---")
-    st.header("💬 Ask AI about this Bill")
-    q = st.text_input("Ask a specific question:")
-    if q:
-        with st.spinner("Answering..."):
-            ans = llm.invoke(f"Context: {st.session_state.full_text[:10000]}\nQuestion: {q}")
+    st.header("💬 Ask a Specific Question")
+    user_q = st.text_input("Example: What does Clause 14 say about hospitals?")
+    if user_q:
+        with st.spinner("Checking bill text..."):
+            ans = llm.invoke(f"Using this bill text: {st.session_state.full_text[:12000]}, answer the question: {user_q}")
             st.chat_message("assistant").write(ans.content)
