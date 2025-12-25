@@ -19,8 +19,10 @@ BILL_KEYWORDS = [
 ]
 
 def clean_parliamentary_text(text):
-    # FIXED: remove stray backslashes safely (NO regex error)
+    # FIXED: Replaced the re.sub that caused the SyntaxError
+    # This safely removes backslashes and cleans up source tags
     text = text.replace("\\", "")
+    text = re.sub(r'\', '', text)
     return " ".join(text.split())
 
 def is_valid_government_doc(text):
@@ -65,10 +67,7 @@ if uploaded_file:
 
     if st.button("🔍 Generate Analysis"):
         if not is_valid_government_doc(st.session_state.full_text):
-            st.warning(
-                "⚠️ This document may not be a standard Bill, "
-                "but analysis will still be attempted."
-            )
+            st.warning("⚠️ This document may not be a standard Bill, but analysis will still be attempted.")
 
         with st.spinner("Analyzing document..."):
             prompt = f"""
@@ -159,9 +158,7 @@ def generate_pdf(text):
 # ---------------- CONTENT DISPLAY ----------------
 if st.session_state.analysis:
     st.markdown("---")
-    tab1, tab2, tab3 = st.tabs(
-        ["🏷️ Sector", "📄 Summary", "📊 Impact Analysis"]
-    )
+    tab1, tab2, tab3 = st.tabs(["🏷️ Sector", "📄 Summary", "📊 Impact Analysis"])
 
     with tab1:
         st.header("🏷️ Identified Sector")
@@ -189,30 +186,20 @@ if st.session_state.analysis:
         col1, col2 = st.columns(2)
         with col1:
             st.success("✅ Positives\n\n" + extract("POSITIVES:"))
-            st.write("💎 Who gains?\n", extract("BENEFICIARIES:"))
+            st.write("💎 **Who gains?**\n", extract("BENEFICIARIES:"))
         with col2:
             st.error("⚠️ Risks\n\n" + extract("NEGATIVES / RISKS:"))
-            st.write("👥 Who is affected?\n", extract("AFFECTED GROUPS:"))
+            st.write("👥 **Who is affected?**\n", extract("AFFECTED GROUPS:"))
 
 # ---------------- AI CHAT ----------------
 if st.session_state.analysis and st.session_state.full_text:
     st.markdown("---")
     st.header("💬 Ask a Specific Question")
-
     user_q = st.text_input("Ask a question about a clause or rule:")
 
     if user_q:
         with st.spinner("Checking bill text..."):
             ans = llm.invoke(
-                f"""
-Answer using ONLY the bill text below.
-If the answer is not mentioned, say so clearly.
-
-BILL TEXT:
-{st.session_state.full_text[:12000]}
-
-QUESTION:
-{user_q}
-"""
+                f"Answer using ONLY this bill text: {st.session_state.full_text[:12000]}\nQuestion: {user_q}"
             )
             st.chat_message("assistant").write(ans.content)
