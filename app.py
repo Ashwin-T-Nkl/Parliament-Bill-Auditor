@@ -31,35 +31,16 @@ REAL_BILL_PATTERNS = [
     r"financial\s+memorandum",  # Standard bill section
 ]
 
-# Patterns that indicate EXAMPLE/TEST documents
-EXAMPLE_PATTERNS = [
-    r"example\s+bill",
-    r"test\s+document",
-    r"sample\s+text",
-    r"for\s+demonstration\s+purposes",
-    r"carriage\s+of\s+goods",  # Your specific example
-    r"question\s*:.*answer\s*:",  # Q&A format like in your example
-]
-
 def is_valid_government_doc(text):
     """
     Enhanced validation to distinguish real parliamentary bills from examples
-    Returns: (is_valid, reason_message, bill_type)
+    Returns: (is_valid, reason_message)
     """
     text_lower = text.lower()
     
     # Basic checks
     if len(text.strip()) < 500:
-        return False, "Document too short (less than 500 characters)", "invalid"
-    
-    # Check for example/test documents FIRST
-    for pattern in EXAMPLE_PATTERNS:
-        if re.search(pattern, text_lower, re.IGNORECASE):
-            return False, "This appears to be an example/test document, not an actual parliamentary bill", "example"
-    
-    # Check for Q&A format (like in your problematic example)
-    if re.search(r"question\s*:.*answer\s*:", text_lower, re.IGNORECASE | re.DOTALL):
-        return False, "Document appears to contain instructional Q&A format, not a bill", "example"
+        return False, "Document too short (less than 500 characters)"
     
     # Check for strong indicators of real bills
     strong_indicators = 0
@@ -70,41 +51,13 @@ def is_valid_government_doc(text):
     # Check for keywords
     keyword_count = sum(1 for k in BILL_KEYWORDS if k in text_lower)
     
-    # Determine bill type
-    bill_type = "unknown"
-    
-    # Check for specific Indian Parliament formatting
-    if "lok sabha" in text_lower or "rajya sabha" in text_lower:
-        bill_type = "indian"
-        strong_indicators += 2  # Weight these heavily
-    
     # Validation logic
     if strong_indicators >= 2 and keyword_count >= 5:
-        return True, f"✅ Valid parliamentary bill detected ({strong_indicators} strong indicators, {keyword_count} keywords)", bill_type
+        return True, "✅ Valid parliamentary bill detected"
     elif strong_indicators >= 1 and keyword_count >= 3:
-        return True, f"⚠️ Possible bill detected - proceeding with analysis", bill_type
+        return True, "⚠️ Possible bill detected - proceeding with analysis"
     else:
-        return False, f"Document doesn't appear to be a parliamentary bill (only {keyword_count} keywords, {strong_indicators} strong indicators)", "invalid"
-
-def extract_bill_proposer(text):
-    """
-    Try to extract bill proposer/sponsor information
-    """
-    patterns = [
-        r"sponsored\s+by\s+([^.]+?\.)",  # "Sponsored by Shri XYZ."
-        r"introduced\s+by\s+([^.]+?\.)",  # "Introduced by Dr. ABC."
-        r"minister\s+(?:of\s+)?[^,]+?,\s+([^,]+?)\s+\(minister",  # "Minister of X, Name (Minister"
-        r"mr\.\s+[^,]+?(?:\s+mp)?",  # "Mr. Name MP"
-        r"shri\s+[^,]+?(?:\s+mp)?",  # "Shri Name MP"
-        r"dr\.\s+[^,]+?(?:\s+mp)?",  # "Dr. Name MP"
-    ]
-    
-    for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            return match.group(0).strip()
-    
-    return None
+        return False, f"❌ Document doesn't appear to be a parliamentary bill"
 
 # ---------------- SESSION STATE ----------------
 if "analysis" not in st.session_state: 
@@ -113,12 +66,10 @@ if "full_text" not in st.session_state:
     st.session_state.full_text = ""
 if "last_file" not in st.session_state: 
     st.session_state.last_file = None
-if "bill_proposer" not in st.session_state: 
-    st.session_state.bill_proposer = None
-if "bill_type" not in st.session_state: 
-    st.session_state.bill_type = None
 if "validation_status" not in st.session_state: 
     st.session_state.validation_status = None
+if "analysis_data" not in st.session_state:  # Store parsed analysis data
+    st.session_state.analysis_data = {}
 
 # ---------------- FILE UPLOAD ----------------
 uploaded_file = st.file_uploader("Upload Bill PDF", type=["pdf"])
@@ -127,8 +78,8 @@ if uploaded_file:
     if st.session_state.last_file != uploaded_file.name:
         st.session_state.last_file = uploaded_file.name
         st.session_state.analysis = None
-        st.session_state.bill_proposer = None
         st.session_state.validation_status = None
+        st.session_state.analysis_data = {}
         
         # Extract text
         reader = PdfReader(uploaded_file)
@@ -144,43 +95,25 @@ if uploaded_file:
         st.session_state.full_text = raw_text
         
         # Validate document
-        is_valid, message, bill_type = is_valid_government_doc(raw_text)
+        is_valid, message = is_valid_government_doc(raw_text)
         st.session_state.validation_status = (is_valid, message)
-        st.session_state.bill_type = bill_type
-        
-        # Extract proposer if possible
-        if is_valid and bill_type != "example":
-            proposer = extract_bill_proposer(raw_text[:5000])  # Check first 5000 chars
-            if proposer:
-                st.session_state.bill_proposer = proposer
     
     # Display validation status
     if st.session_state.validation_status:
         is_valid, message = st.session_state.validation_status
         
         if not is_valid:
-            st.error(f"❌ {message}")
+            st.error(f"{message}")
             st.warning("""
             **Please upload an actual parliamentary bill. Real bills usually contain:**
             - "A BILL TO..." at the beginning
             - Bill number (e.g., Bill No. 123 of 2024)
             - Mentions of "Lok Sabha" or "Rajya Sabha"
             - "Statement of Objects and Reasons" section
-            - Sponsor/Minister name
-            - Date of introduction
             """)
-            
-            # Option to force analysis anyway (for testing)
-            with st.expander("⚠️ Force analysis anyway (for testing)"):
-                force_analyze = st.checkbox("I understand this may not be a real bill, proceed anyway")
-                if not force_analyze:
-                    st.stop()
+            st.stop()
         else:
-            st.success(f"✅ {message}")
-            
-            # Show extracted proposer if found
-            if st.session_state.bill_proposer:
-                st.info(f"**Bill Sponsor Detected:** {st.session_state.bill_proposer}")
+            st.success(f"{message}")
 
     if "GROQ_API_KEY" not in os.environ:
         st.error("Please set GROQ_API_KEY environment variable.")
@@ -193,116 +126,154 @@ if uploaded_file:
         max_tokens=3500
     )
 
+    # GREEN Generate Analysis Button
     if st.button("🔍 Generate Analysis", type="primary"):
         with st.spinner("Analyzing document..."):
-            # Enhanced prompt with document type awareness
             prompt = f"""
 SYSTEM: You are a professional Policy Analyst specializing in Indian parliamentary bills.
 
-DOCUMENT TYPE CHECK: 
-Based on the text, determine if this is:
-1. ACTUAL PARLIAMENTARY BILL - Analyze normally
-2. EXAMPLE/TEST DOCUMENT - Indicate it's an example
-3. OTHER DOCUMENT - Explain what it appears to be
+TASK: Analyze this parliamentary bill for 8th grade students. Use ONLY the text provided.
 
-TASK: If this is a real bill, analyze it for 8th grade students. Use ONLY the text provided.
+CRITICAL FORMATTING INSTRUCTIONS:
+1. Use ONLY the headings provided below
+2. Each section should be bullet points (use - at the beginning of each point)
+3. Keep bullet points concise (1-2 lines each)
+4. No markdown formatting (no ** or #)
+5. Keep language simple and clear
 
-CRITICAL INSTRUCTIONS:
-1. If the text contains instructional Q&A (like "Question: ... Answer: ..."), state this is likely example text
-2. If it mentions generic acts like "Carriage of Goods by Sea Act" without parliamentary context, it's likely an example
-3. Only provide bill analysis for documents mentioning Parliament, Lok Sabha, Rajya Sabha, or similar legislative bodies
-
-FORMAT: Use these exact headings. No markdown symbols.
-
-DOCUMENT TYPE:
-[Actual Bill / Example Document / Other]
-
-REASON:
-[Brief explanation of classification]
-
-{'='*50 if 'Actual Bill' in 'DOCUMENT TYPE:' else ''}
-
-IF ACTUAL BILL, CONTINUE WITH:
+ANALYSIS SECTIONS (USE THESE EXACT HEADINGS):
 
 SECTOR:
-[One word: Agriculture, Finance, Education, Healthcare, Technology, Environment, Defence, Transport, etc.]
-
-PROPOSER/SPONSOR:
-[Name if found in text, otherwise "Not specified in text"]
+- [One sector: Agriculture, Finance, Education, Healthcare, Technology, Environment, Defence, Transport, etc.]
 
 OBJECTIVE:
-[3-5 short lines]
+- [Bullet point 1]
+- [Bullet point 2]
+- [Bullet point 3]
+- [Bullet point 4]
 
 DETAILED SUMMARY:
-[10-20 bullet points]
+- [Bullet point 1 - Key provision]
+- [Bullet point 2 - Key provision]
+- [Bullet point 3 - Key provision]
+- [Continue with 10-15 key provisions]
 
 IMPACT ANALYSIS:
 Citizens:
-- Bullet points
+- [Impact on citizens 1]
+- [Impact on citizens 2]
+- [Impact on citizens 3]
+
 Businesses:
-- Bullet points
+- [Impact on businesses 1]
+- [Impact on businesses 2]
+- [Impact on businesses 3]
+
 Government:
-- Bullet points
+- [Impact on government 1]
+- [Impact on government 2]
+- [Impact on government 3]
 
 BENEFICIARIES:
-- Bullet points
+- [Beneficiary group 1]
+- [Beneficiary group 2]
+- [Beneficiary group 3]
+- [Beneficiary group 4]
 
 AFFECTED GROUPS:
-- Bullet points
+- [Affected group 1]
+- [Affected group 2]
+- [Affected group 3]
+- [Affected group 4]
 
 POSITIVES:
-- Bullet points
+- [Positive aspect 1]
+- [Positive aspect 2]
+- [Positive aspect 3]
+- [Positive aspect 4]
 
 NEGATIVES / RISKS:
-- Bullet points
+- [Risk/Negative 1]
+- [Risk/Negative 2]
+- [Risk/Negative 3]
+- [Risk/Negative 4]
 
-IF EXAMPLE/OTHER DOCUMENT:
-[Explain why this appears to be example/instructional text and what it demonstrates]
-
-TEXT:
-{st.session_state.full_text[:18000]}
+TEXT TO ANALYZE:
+{st.session_state.full_text[:15000]}
 """
             try:
                 response = llm.invoke(prompt)
                 st.session_state.analysis = response.content
+                
+                # Parse the analysis into structured data
+                parse_analysis_data()
+                
             except Exception as e:
                 st.error(f"Error during analysis: {e}")
 
-# ---------------- EXTRACTION HELPER ----------------
-def extract_section(title):
-    """Extract section from analysis text"""
-    content = st.session_state.analysis
-    if not content: 
-        return "No analysis available."
+# ---------------- ANALYSIS PARSING ----------------
+def parse_analysis_data():
+    """Parse the analysis text into structured data"""
+    if not st.session_state.analysis:
+        return
     
-    try:
-        # Find the section
-        start_idx = content.find(title)
-        if start_idx == -1:
-            return "Section not found in analysis."
+    content = st.session_state.analysis
+    sections = {}
+    
+    # Define all section headers
+    headers = [
+        "SECTOR:", "OBJECTIVE:", "DETAILED SUMMARY:", "IMPACT ANALYSIS:",
+        "BENEFICIARIES:", "AFFECTED GROUPS:", "POSITIVES:", "NEGATIVES / RISKS:"
+    ]
+    
+    # Parse each section
+    for i in range(len(headers)):
+        header = headers[i]
+        start_idx = content.find(header)
         
-        # Find end of section (next major heading or end of text)
-        headings = ["DOCUMENT TYPE:", "REASON:", "SECTOR:", "PROPOSER/SPONSOR:", "OBJECTIVE:", 
-                   "DETAILED SUMMARY:", "IMPACT ANALYSIS:", "BENEFICIARIES:", 
-                   "AFFECTED GROUPS:", "POSITIVES:", "NEGATIVES / RISKS:"]
-        
-        start_idx += len(title)
-        end_idx = len(content)
-        
-        for heading in headings:
-            next_heading = content.find(heading, start_idx + 1)
-            if next_heading != -1 and next_heading < end_idx:
-                end_idx = next_heading
-        
-        section_text = content[start_idx:end_idx].strip()
-        
-        # Clean up
-        section_text = re.sub(r'^\s*[-*]\s*', '', section_text, flags=re.MULTILINE)
-        section_text = re.sub(r'\n\s*\n\s*\n+', '\n\n', section_text)
-        
-        return section_text if section_text else "No content in this section."
-    except Exception as e:
-        return f"Error extracting section: {e}"
+        if start_idx != -1:
+            start_idx += len(header)
+            # Find the end (next header or end of text)
+            end_idx = len(content)
+            for j in range(i + 1, len(headers)):
+                next_header_pos = content.find(headers[j], start_idx)
+                if next_header_pos != -1 and next_header_pos < end_idx:
+                    end_idx = next_header_pos
+                    break
+            
+            section_text = content[start_idx:end_idx].strip()
+            # Convert to bullet list format
+            sections[header.replace(":", "").lower()] = format_as_bullets(section_text)
+    
+    st.session_state.analysis_data = sections
+
+def format_as_bullets(text):
+    """Format text as bullet points"""
+    lines = text.strip().split('\n')
+    bullet_lines = []
+    
+    for line in lines:
+        line = line.strip()
+        if line:
+            # If line doesn't already start with bullet, add it
+            if not line.startswith('-'):
+                bullet_lines.append(f"- {line}")
+            else:
+                bullet_lines.append(line)
+    
+    return '\n'.join(bullet_lines)
+
+# ---------------- EXTRACTION HELPER ----------------
+def extract_section(section_name):
+    """Extract section from analysis data"""
+    if not st.session_state.analysis_data:
+        return "Analysis not yet generated."
+    
+    section_key = section_name.lower().replace(" ", "_")
+    if section_key == "detailed_summary":
+        section_key = "detailed summary"
+    
+    return st.session_state.analysis_data.get(section_key, "Section not found in analysis.")
 
 def generate_pdf(text):
     """Generate PDF from text"""
@@ -318,15 +289,12 @@ def generate_pdf(text):
             y = 800
             pdf.setFont("Helvetica", 10)
         
-        # Handle long lines
-        if len(line) > 95:
-            chunks = [line[i:i+95] for i in range(0, len(line), 95)]
-            for chunk in chunks:
-                pdf.drawString(50, y, chunk)
-                y -= 15
+        # Handle bullet points
+        if line.startswith('-'):
+            pdf.drawString(60, y, "• " + line[1:].strip())
         else:
             pdf.drawString(50, y, line)
-            y -= 15
+        y -= 15
     
     pdf.save()
     buffer.seek(0)
@@ -336,177 +304,140 @@ def generate_pdf(text):
 if st.session_state.analysis:
     st.markdown("---")
     
-    # First check document type
-    doc_type = extract_section("DOCUMENT TYPE:")
-    reason = extract_section("REASON:")
-    
-    if "example" in doc_type.lower() or "example" in reason.lower():
-        st.warning("📝 **Document Classification Result**")
-        st.write(f"**Type:** {doc_type}")
-        st.write(f"**Reason:** {reason}")
-        st.info("""
-        This appears to be example or instructional text rather than an actual parliamentary bill.
-        Real parliamentary bills typically include:
-        - Bill number and year
-        - Specific minister/sponsor name
-        - "Statement of Objects and Reasons"
-        - References to Lok Sabha/Rajya Sabha
-        - Date of introduction
-        """)
-    else:
-        # Display analysis for actual bills
-        st.success("✅ **Valid Parliamentary Bill Analysis**")
+    # Create tabs as requested
+    sector_tab, summary_tab, impact_tab, details_tab = st.tabs(["Sector", "Summary", "Impact", "Details"])
+
+    with sector_tab:
+        st.header("Sector")
+        sector_content = extract_section("SECTOR")
+        st.write(sector_content)
         
-        tab1, tab2, tab3, tab4 = st.tabs(["🏷️ Overview", "📄 Summary", "📊 Impact", "🔍 Details"])
+        # Optional: Add a small visual indicator
+        if "not found" not in sector_content:
+            st.caption(f"📊 Primary sector identified")
 
-        with tab1:
-            st.header("🏷️ Bill Overview")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.subheader("Sector")
-                sector = extract_section("SECTOR:")
-                st.info(sector if sector != "Section not found in analysis." else "Not specified")
-            
-            with col2:
-                st.subheader("Proposer/Sponsor")
-                proposer = extract_section("PROPOSER/SPONSOR:")
-                if proposer and proposer != "Section not found in analysis.":
-                    st.info(proposer)
-                elif st.session_state.bill_proposer:
-                    st.info(st.session_state.bill_proposer)
-                else:
-                    st.info("Not specified in document")
-            
-            st.subheader("Document Classification")
-            st.write(f"**Type:** {doc_type}")
-            st.write(f"**Assessment:** {reason}")
+    with summary_tab:
+        st.header("Summary")
+        
+        st.subheader("Objective")
+        objective_content = extract_section("OBJECTIVE")
+        st.write(objective_content)
+        
+        st.subheader("Detailed Summary")
+        detail_content = extract_section("DETAILED SUMMARY")
+        st.write(detail_content)
+        
+        # Download button
+        if "not found" not in detail_content:
+            summary_text = f"Objective:\n{objective_content}\n\nDetailed Summary:\n{detail_content}"
+            pdf_buffer = generate_pdf(summary_text)
+            st.download_button(
+                label="⬇️ Download PDF Summary",
+                data=pdf_buffer,
+                file_name="Bill_Summary.pdf",
+                mime="application/pdf"
+            )
 
-        with tab2:
-            st.header("📄 Bill Summary")
+    with impact_tab:
+        st.header("Impact Analysis")
+        
+        impact_content = extract_section("IMPACT ANALYSIS")
+        st.write(impact_content)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("✅ Positives")
+            positives_content = extract_section("POSITIVES")
+            st.write(positives_content)
             
-            st.subheader("🎯 Objective")
-            objective = extract_section("OBJECTIVE:")
-            st.write(objective if objective != "Section not found in analysis." else "No objective specified")
+            st.subheader("Beneficiaries")
+            beneficiaries_content = extract_section("BENEFICIARIES")
+            st.write(beneficiaries_content)
+        
+        with col2:
+            st.subheader("⚠️ Risks")
+            negatives_content = extract_section("NEGATIVES / RISKS")
+            st.write(negatives_content)
             
-            st.subheader("💡 Key Provisions")
-            detail = extract_section("DETAILED SUMMARY:")
-            st.write(detail if detail != "Section not found in analysis." else "No detailed summary available")
-            
-            # Download button
-            if detail and detail != "Section not found in analysis.":
-                pdf_buffer = generate_pdf(f"Bill Summary\n\nObjective:\n{objective}\n\nKey Provisions:\n{detail}")
-                st.download_button(
-                    label="⬇️ Download PDF Summary",
-                    data=pdf_buffer,
-                    file_name="Bill_Summary.pdf",
-                    mime="application/pdf"
-                )
+            st.subheader("Affected Groups")
+            affected_content = extract_section("AFFECTED GROUPS")
+            st.write(affected_content)
 
-        with tab3:
-            st.header("📊 Impact Analysis")
+    with details_tab:
+        st.header("Details")
+        
+        # Show raw analysis in an expander
+        with st.expander("View Complete Analysis"):
+            st.text(st.session_state.analysis)
+        
+        # Show file info
+        with st.expander("Document Information"):
+            st.write(f"**File:** {st.session_state.last_file}")
+            st.write(f"**Text length:** {len(st.session_state.full_text)} characters")
             
-            impact = extract_section("IMPACT ANALYSIS:")
-            if impact != "Section not found in analysis.":
-                st.write(impact)
-            else:
-                st.info("No impact analysis available")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.success("✅ **Positives**")
-                positives = extract_section("POSITIVES:")
-                st.write(positives if positives != "Section not found in analysis." else "No positives listed")
-                
-                st.subheader("Beneficiaries")
-                beneficiaries = extract_section("BENEFICIARIES:")
-                st.write(beneficiaries if beneficiaries != "Section not found in analysis." else "Not specified")
-            
-            with col2:
-                st.error("⚠️ **Risks & Concerns**")
-                negatives = extract_section("NEGATIVES / RISKS:")
-                st.write(negatives if negatives != "Section not found in analysis." else "No risks identified")
-                
-                st.subheader("Affected Groups")
-                affected = extract_section("AFFECTED GROUPS:")
-                st.write(affected if affected != "Section not found in analysis." else "Not specified")
+            # Extract and show bill name if available
+            bill_match = re.search(r'([A-Z][a-z\s]+)(?:Bill|Act)[,\s]*(\d{4})', st.session_state.full_text[:500])
+            if bill_match:
+                st.write(f"**Bill Name:** {bill_match.group(1).strip()} {bill_match.group(2)}")
 
-        with tab4:
-            st.header("🔍 Raw Analysis")
-            with st.expander("View complete AI analysis"):
-                st.text(st.session_state.analysis)
-
-# ---------------- ENHANCED AI CHAT ----------------
+# ---------------- SMART AI CHAT (ANSWERS FROM ANALYSIS) ----------------
 if st.session_state.analysis and st.session_state.full_text:
     st.markdown("---")
-    st.header("💬 Ask AI about this Document")
+    st.header("💬 Ask AI about this Bill")
     
-    # Context-aware chat
-    doc_type = extract_section("DOCUMENT TYPE:")
-    is_example = "example" in doc_type.lower() if doc_type else False
-    
-    if is_example:
-        st.warning("Note: You're asking questions about an example/instructional document, not an actual parliamentary bill.")
-    
-    user_q = st.text_input("Ask a specific question about the document:")
+    user_q = st.text_input("Ask a question about the bill (e.g., 'Who proposed this bill?'):")
     
     if user_q:
-        with st.spinner("Analyzing question..."):
-            # Enhanced context prompt
-            chat_prompt = f"""
-SYSTEM: You are a Public Policy Analyst.
-
-CONTEXT AWARENESS:
-1. Document Type: {doc_type}
-2. Is Example: {is_example}
-
-CRITICAL RULES:
-1. If this is an EXAMPLE/INSTRUCTIONAL document:
-   - Clearly state this at the beginning
-   - Explain it's not an actual parliamentary bill
-   - Answer questions about its content as demonstration material
-   
-2. If this is an ACTUAL PARLIAMENTARY BILL:
-   - Answer based ONLY on the provided text
-   - If information isn't in text, say "Not specified in the document"
-   - For "who proposed", check for sponsor/minister mentions
-
-3. For ALL documents:
-   - Keep answers simple and educational
-   - Be honest about limitations
-   - Don't invent information
-
-SPECIAL HANDLING FOR "WHO PROPOSED":
-- Check text for: "sponsored by", "introduced by", "minister", "Shri", "Dr.", "Mr."
-- If not found: "The proposer is not specified in this document excerpt"
-- If it's an example: "This is an example document, so there is no actual proposer"
-
-DOCUMENT CONTEXT (first 2000 chars):
-{st.session_state.full_text[:2000]}
-
-FULL DOCUMENT TYPE ANALYSIS:
-{doc_type}
-{extract_section("REASON:")}
-
-USER QUESTION:
-{user_q}
-
-ANSWER (start with document type if example):
-"""
-            try:
-                ans = llm.invoke(chat_prompt)
+        with st.spinner("Finding answer in analysis..."):
+            # Build context from analysis data
+            context = ""
+            for section, content in st.session_state.analysis_data.items():
+                context += f"\n\n{section.upper()}:\n{content}"
+            
+            # Special handling for "who proposed" questions
+            if "who proposed" in user_q.lower() or "who sponsored" in user_q.lower():
+                # Extract proposer from original text
+                proposer_patterns = [
+                    r"sponsored\s+by\s+([^.]+?\.)",
+                    r"introduced\s+by\s+([^.]+?\.)",
+                    r"moved\s+by\s+([^.]+?\.)",
+                    r"Shri\s+[A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+\([^)]+\))?",
+                    r"Minister\s+of\s+State\s+[^.]+?,\s+([^,]+?)\s+\(",
+                ]
                 
-                # Display with appropriate styling
-                if is_example:
-                    with st.chat_message("assistant"):
-                        st.warning("📝 **Example Document Note**")
-                        st.write("This is an instructional/example document, not an actual parliamentary bill.")
-                        st.write(ans.content)
+                proposer = None
+                for pattern in proposer_patterns:
+                    match = re.search(pattern, st.session_state.full_text[:2000], re.IGNORECASE)
+                    if match:
+                        proposer = match.group(0).strip()
+                        break
+                
+                if proposer:
+                    answer = f"Based on the bill text, this bill appears to have been proposed/sponsored by: **{proposer}**"
                 else:
-                    st.chat_message("assistant").write(ans.content)
-                    
-            except Exception as e:
-                st.error(f"Error generating answer: {e}")
+                    answer = "The bill proposer/sponsor is not explicitly mentioned in the extracted text."
+            else:
+                # For other questions, use the analysis as context
+                chat_prompt = f"""
+SYSTEM: You are a helpful assistant answering questions about a parliamentary bill analysis.
+Answer based ONLY on the analysis provided below.
+Keep answers concise and in simple language.
+
+BILL ANALYSIS CONTEXT:
+{context}
+
+USER QUESTION: {user_q}
+
+ANSWER (be brief and factual, use bullet points if helpful):
+"""
+                try:
+                    response = llm.invoke(chat_prompt)
+                    answer = response.content
+                except Exception as e:
+                    answer = f"Error generating answer: {e}"
+            
+            # Display answer
+            st.chat_message("assistant").write(answer)
 
 # ---------------- FOOTER ----------------
 st.markdown("---")
@@ -516,10 +447,17 @@ with st.expander("ℹ️ About this tool"):
     
     This tool analyzes parliamentary bills with:
     
-    ✅ **Smart Validation** - Distinguishes real bills from examples
-    ✅ **Proposer Detection** - Attempts to identify bill sponsors
-    ✅ **Impact Analysis** - Comprehensive stakeholder analysis
-    ✅ **Q&A System** - Context-aware document questioning
+    ✅ **Smart Validation** - Identifies real parliamentary bills
+    ✅ **Bullet-point Analysis** - Clear, concise breakdown
+    ✅ **Efficient Q&A** - Answers from pre-generated analysis
+    ✅ **Clean UI** - Simple, focused interface
     
-    **Upload a real parliamentary bill to get started!**
+    **How it works:**
+    1. Upload a parliamentary bill PDF
+    2. System validates it's a real bill
+    3. Click "Generate Analysis" (green button)
+    4. View results in four tabs
+    5. Ask questions in the chat
+    
+    **Note:** The AI answers questions using the generated analysis, not re-reading the entire document.
     """)
