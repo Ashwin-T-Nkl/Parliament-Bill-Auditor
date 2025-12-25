@@ -73,9 +73,9 @@ def is_valid_government_doc(text):
     
     # Validation logic
     if strong_indicators >= 2 and keyword_count >= 5:
-        return True, f"✅ Valid parliamentary bill detected", bill_type
+        return True, f"Valid parliamentary bill detected", bill_type
     elif strong_indicators >= 1 and keyword_count >= 3:
-        return True, f"⚠️ Possible bill detected", bill_type
+        return True, f"Possible bill detected", bill_type
     else:
         return False, f"Document doesn't appear to be a parliamentary bill", "invalid"
 
@@ -183,7 +183,59 @@ def generate_pdf(text):
 
 # Page config
 st.set_page_config(page_title="Parliament Bill Auditor", layout="wide")
-st.title("🏛️ Parliament Bill Auditor")
+
+# Custom CSS for larger tab names and styling
+st.markdown("""
+<style>
+    /* Larger tab names */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        font-size: 18px !important;
+        font-weight: 600 !important;
+        padding: 15px 25px !important;
+    }
+    
+    /* Remove validation success message styling */
+    .stSuccess {
+        display: none;
+    }
+    
+    /* Style for bullet points */
+    .bullet-point {
+        font-size: 16px;
+        margin-bottom: 8px;
+    }
+    
+    /* Center the title */
+    .main-header {
+        text-align: center;
+        font-size: 36px;
+        font-weight: bold;
+        margin-bottom: 30px;
+    }
+    
+    /* Style for section headers */
+    .section-header {
+        font-size: 28px;
+        font-weight: bold;
+        margin-top: 20px;
+        margin-bottom: 15px;
+    }
+    
+    .sub-header {
+        font-size: 22px;
+        font-weight: 600;
+        margin-top: 15px;
+        margin-bottom: 10px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Title
+st.markdown('<div class="main-header">🏛️ Parliament Bill Auditor</div>', unsafe_allow_html=True)
 
 # Initialize session state
 if "analysis" not in st.session_state: 
@@ -201,8 +253,10 @@ if "bill_type" not in st.session_state:
 if "raw_analysis" not in st.session_state: 
     st.session_state.raw_analysis = ""
 
-# File upload
-uploaded_file = st.file_uploader("Upload Bill PDF", type=["pdf"])
+# File upload section
+with st.container():
+    st.markdown("### Upload Parliamentary Bill")
+    uploaded_file = st.file_uploader("Choose a PDF file", type=["pdf"], label_visibility="collapsed")
 
 if uploaded_file:
     if st.session_state.last_file != uploaded_file.name:
@@ -236,7 +290,7 @@ if uploaded_file:
             if proposer:
                 st.session_state.bill_proposer = proposer
     
-    # Display validation status
+    # Display validation status - only show errors, not successes
     if st.session_state.validation_status:
         is_valid, message = st.session_state.validation_status
         
@@ -257,8 +311,7 @@ if uploaded_file:
                 force_analyze = st.checkbox("I understand this may not be a real bill, proceed anyway")
                 if not force_analyze:
                     st.stop()
-        else:
-            st.success(f"✅ {message}")
+        # If valid, proceed silently (no success message)
 
     # Check API key
     if "GROQ_API_KEY" not in os.environ:
@@ -272,11 +325,31 @@ if uploaded_file:
         max_tokens=3500
     )
 
-    # Generate Analysis Button - USING SECOND CODE'S BETTER BUTTON
+    # Generate Analysis Button - Green button
     st.markdown("<br>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        if st.button("🔍 GENERATE ANALYSIS", type="primary", use_container_width=True):
+        # Custom CSS for green button
+        st.markdown("""
+        <style>
+        .stButton > button {
+            background-color: #28a745;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            padding: 15px 30px;
+            border-radius: 8px;
+            border: none;
+            width: 100%;
+        }
+        .stButton > button:hover {
+            background-color: #218838;
+            color: white;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        if st.button("🔍 GENERATE ANALYSIS", use_container_width=True):
             with st.spinner("Analyzing document... This may take a moment."):
                 # USING SECOND CODE'S BETTER PROMPT FORMAT
                 prompt = f"""
@@ -353,7 +426,7 @@ Now analyze this bill text:
                     response = llm.invoke(prompt)
                     st.session_state.raw_analysis = response.content
                     st.session_state.analysis = response.content
-                    st.success("✅ Analysis complete! View results in tabs below.")
+                    # Removed the success message "✅ Analysis complete! View results in tabs below."
                 except Exception as e:
                     st.error(f"Analysis error: {str(e)}")
 
@@ -361,11 +434,11 @@ Now analyze this bill text:
 if st.session_state.analysis:
     st.markdown("---")
     
-    # Create tabs (SECOND CODE'S SIMPLE TAB NAMES)
-    sector_tab, summary_tab, impact_tab, details_tab = st.tabs(["Sector", "Summary", "Impact", "Details"])
+    # Create tabs with larger names (3 tabs instead of 4, removing "Details" tab)
+    sector_tab, summary_tab, impact_tab = st.tabs(["📊 SECTOR", "📝 SUMMARY", "📈 IMPACT"])
 
     with sector_tab:
-        st.header("Sector")
+        st.markdown('<div class="section-header">Sector Analysis</div>', unsafe_allow_html=True)
         sector_content = extract_section("SECTOR", st.session_state.raw_analysis)
         
         if sector_content and "not found" not in sector_content.lower() and len(sector_content) > 5:
@@ -374,17 +447,17 @@ if st.session_state.analysis:
             for line in lines:
                 if line.strip():
                     if line.strip().startswith('-'):
-                        st.write(line)
+                        st.markdown(f'<div class="bullet-point">{line}</div>', unsafe_allow_html=True)
                     else:
-                        st.write(f"- {line}")
+                        st.markdown(f'<div class="bullet-point">- {line}</div>', unsafe_allow_html=True)
         else:
             st.info("No sector information extracted.")
 
     with summary_tab:
-        st.header("Summary")
+        st.markdown('<div class="section-header">Summary</div>', unsafe_allow_html=True)
         
         # Objective section
-        st.subheader("Objective")
+        st.markdown('<div class="sub-header">Objective</div>', unsafe_allow_html=True)
         objective_content = extract_section("OBJECTIVE", st.session_state.raw_analysis)
         
         if objective_content and "not found" not in objective_content.lower() and len(objective_content) > 10:
@@ -392,14 +465,14 @@ if st.session_state.analysis:
             for line in lines:
                 if line.strip():
                     if line.strip().startswith('-'):
-                        st.write(line)
+                        st.markdown(f'<div class="bullet-point">{line}</div>', unsafe_allow_html=True)
                     else:
-                        st.write(f"- {line}")
+                        st.markdown(f'<div class="bullet-point">- {line}</div>', unsafe_allow_html=True)
         else:
             st.info("Could not extract objective section.")
         
         # Detailed Summary section
-        st.subheader("Detailed Summary")
+        st.markdown('<div class="sub-header">Detailed Summary</div>', unsafe_allow_html=True)
         summary_content = extract_section("DETAILED SUMMARY", st.session_state.raw_analysis)
         
         if summary_content and "not found" not in summary_content.lower() and len(summary_content) > 20:
@@ -407,26 +480,29 @@ if st.session_state.analysis:
             for line in lines:
                 if line.strip():
                     if line.strip().startswith('-'):
-                        st.write(line)
+                        st.markdown(f'<div class="bullet-point">{line}</div>', unsafe_allow_html=True)
                     else:
-                        st.write(f"- {line}")
+                        st.markdown(f'<div class="bullet-point">- {line}</div>', unsafe_allow_html=True)
             
             # Download button
-            if st.button("📥 Download Summary as PDF", key="download_summary"):
-                pdf_text = f"Bill Analysis Summary\n\nObjective:\n{objective_content}\n\nDetailed Summary:\n{summary_content}"
-                pdf_buffer = generate_pdf(pdf_text)
-                st.download_button(
-                    label="⬇️ Click to Download PDF",
-                    data=pdf_buffer,
-                    file_name="Bill_Summary.pdf",
-                    mime="application/pdf",
-                    key="pdf_download"
-                )
+            st.markdown("<br>", unsafe_allow_html=True)
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                if st.button("📥 Download Summary as PDF", use_container_width=True):
+                    pdf_text = f"Bill Analysis Summary\n\nObjective:\n{objective_content}\n\nDetailed Summary:\n{summary_content}"
+                    pdf_buffer = generate_pdf(pdf_text)
+                    st.download_button(
+                        label="⬇️ Click to Download PDF",
+                        data=pdf_buffer,
+                        file_name="Bill_Summary.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
         else:
             st.info("Could not extract detailed summary.")
 
     with impact_tab:
-        st.header("Impact Analysis")
+        st.markdown('<div class="section-header">Impact Analysis</div>', unsafe_allow_html=True)
         
         impact_content = extract_section("IMPACT ANALYSIS", st.session_state.raw_analysis)
         
@@ -439,63 +515,51 @@ if st.session_state.analysis:
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("✅ Positives")
+            st.markdown('<div class="sub-header">✅ Positives</div>', unsafe_allow_html=True)
             positives_content = extract_section("POSITIVES", st.session_state.raw_analysis)
             if positives_content and "not found" not in positives_content.lower():
                 lines = positives_content.strip().split('\n')
                 for line in lines:
                     if line.strip():
-                        st.write(f"• {line.strip().lstrip('-').strip()}")
+                        st.markdown(f'<div class="bullet-point">• {line.strip().lstrip("-").strip()}</div>', unsafe_allow_html=True)
             else:
                 st.info("No positives listed.")
             
-            st.subheader("Beneficiaries")
+            st.markdown('<div class="sub-header">Beneficiaries</div>', unsafe_allow_html=True)
             beneficiaries_content = extract_section("BENEFICIARIES", st.session_state.raw_analysis)
             if beneficiaries_content and "not found" not in beneficiaries_content.lower():
                 lines = beneficiaries_content.strip().split('\n')
                 for line in lines:
                     if line.strip():
-                        st.write(f"• {line.strip().lstrip('-').strip()}")
+                        st.markdown(f'<div class="bullet-point">• {line.strip().lstrip("-").strip()}</div>', unsafe_allow_html=True)
             else:
                 st.info("No beneficiaries listed.")
         
         with col2:
-            st.subheader("⚠️ Risks")
+            st.markdown('<div class="sub-header">⚠️ Risks</div>', unsafe_allow_html=True)
             negatives_content = extract_section("NEGATIVES / RISKS", st.session_state.raw_analysis)
             if negatives_content and "not found" not in negatives_content.lower():
                 lines = negatives_content.strip().split('\n')
                 for line in lines:
                     if line.strip():
-                        st.write(f"• {line.strip().lstrip('-').strip()}")
+                        st.markdown(f'<div class="bullet-point">• {line.strip().lstrip("-").strip()}</div>', unsafe_allow_html=True)
             else:
                 st.info("No risks listed.")
             
-            st.subheader("Affected Groups")
+            st.markdown('<div class="sub-header">Affected Groups</div>', unsafe_allow_html=True)
             affected_content = extract_section("AFFECTED GROUPS", st.session_state.raw_analysis)
             if affected_content and "not found" not in affected_content.lower():
                 lines = affected_content.strip().split('\n')
                 for line in lines:
                     if line.strip():
-                        st.write(f"• {line.strip().lstrip('-').strip()}")
+                        st.markdown(f'<div class="bullet-point">• {line.strip().lstrip("-").strip()}</div>', unsafe_allow_html=True)
             else:
                 st.info("No affected groups listed.")
-
-    with details_tab:
-        st.header("Details")
-        
-        # Show the complete raw analysis
-        st.subheader("Complete AI Analysis")
-        st.text_area("Full Analysis", st.session_state.raw_analysis, height=400, key="full_analysis", disabled=True)
-        
-        # Show proposer if found
-        if st.session_state.bill_proposer:
-            st.subheader("Bill Proposer")
-            st.info(f"**Detected Proposer:** {st.session_state.bill_proposer}")
 
 # ========== USING SECOND CODE'S BETTER AI CHAT ==========
 if st.session_state.analysis and st.session_state.full_text:
     st.markdown("---")
-    st.header("💬 Ask AI about this Bill")
+    st.markdown('<div class="section-header">💬 Ask AI about this Bill</div>', unsafe_allow_html=True)
     
     user_q = st.text_input("Ask a question about the bill:", placeholder="e.g., Who proposed this bill? What are the key provisions?")
     
@@ -526,19 +590,4 @@ Provide a clear, concise answer. If the information is not in the analysis, say 
             
             st.chat_message("assistant").write(answer)
 
-# Footer
-st.markdown("---")
-st.markdown("""
-**Parliament Bill Auditor** - Combined Best Version  
-✅ Excellent validation (from first code)  
-✅ Better AI analysis & tabs (from second code)  
-✅ Bullet-point formatting  
-✅ Clean 4-tab interface
-
-**How to use:**
-1. Upload a parliamentary bill PDF
-2. System validates it using smart detection
-3. Click the green **GENERATE ANALYSIS** button
-4. View results in 4 simple tabs
-5. Ask specific questions in the chat
-""")
+# Removed the entire footer section as requested
