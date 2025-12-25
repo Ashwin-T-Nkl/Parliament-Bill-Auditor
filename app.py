@@ -154,7 +154,7 @@ if st.session_state.analysis:
         with c1:
             st.success("✅ **Positives**\n\n" + extract("POSITIVES:"))
             st.write("**Beneficiaries:**", extract("BENEFICIARIES:"))
-        with col2:
+        with c2: # FIXED NameError: col2 changed to c2
             st.error("⚠️ **Risks**\n\n" + extract("NEGATIVES / RISKS:"))
             st.write("**Affected Groups:**", extract("AFFECTED GROUPS:"))
 
@@ -175,13 +175,12 @@ if st.session_state.analysis and st.session_state.full_text:
             Keep the tone simple, professional, and educational.
 
             BILL CONTEXT:
-            {st.session_state.full_text[:15000]}  # Sliced for token efficiency
+            {st.session_state.full_text[:15000]}
 
             QUESTION:
             {user_q}
 
             ANSWER:
             """
-            # Use a slightly higher temperature (e.g., 0.5) for chat to allow for better explanations
             ans = llm.invoke(chat_prompt)
             st.chat_message("assistant").write(ans.content)
