@@ -358,6 +358,7 @@ IMPORTANT: Use EXACTLY these section headers and format:
 
 SECTOR:
 - [One sector only: Agriculture, Finance, Education, Healthcare, Technology, Environment, Defence, Transport, etc.]
+Give the best one. be precise
 
 OBJECTIVE:
 - [Bullet point 1]
@@ -600,6 +601,7 @@ Provide a clear, concise answer. If the information is not in the analysis, say 
             st.chat_message("assistant").write(answer)
 
 # Removed the entire footer section as requested
+
 
 
 
