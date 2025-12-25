@@ -1,7 +1,6 @@
 import streamlit as st
 from pypdf import PdfReader
 import os
-import re
 from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -11,20 +10,17 @@ from langchain_groq import ChatGroq
 st.set_page_config(page_title="Parliament Bill Auditor", layout="wide")
 st.title("🏛️ Parliament Bill Auditor")
 
-# ---------------- IMPROVED VALIDATION ----------------
-# Added more specific legal and bilingual markers to ensure official docs pass
+# ---------------- VALIDATION ----------------
 BILL_KEYWORDS = [
     "bill", "act", "parliament", "lok sabha", "rajya sabha", "gazette", 
     "legislative", "enacted", "minister", "ministry", "objects and reasons",
-    "vidheyak", "adhiniyam", "purasthapit", "introduced", "passed", "clause"
+    "vidheyak", "adhiniyam", "purasthapit", "introduced", "passed"
 ]
 
 def is_valid_government_doc(text):
     if len(text.strip()) < 100: return False
     text_lower = text.lower()
-    # Require at least 2 keywords to ensure higher validation accuracy
-    count = sum(1 for k in BILL_KEYWORDS if k in text_lower)
-    return count >= 2
+    return any(k in text_lower for k in BILL_KEYWORDS)
 
 # ---------------- SESSION STATE ----------------
 if "analysis" not in st.session_state: st.session_state.analysis = None
@@ -49,10 +45,10 @@ if uploaded_file:
         st.session_state.full_text = raw_text
 
     if "GROQ_API_KEY" not in os.environ:
-        st.error("Please set GROQ_API_KEY in secrets.")
+        st.error("Please set GROQ_API_KEY.")
         st.stop()
 
-    # MODEL CHANGE: Using 70b-versatile for high reasoning and to stop number-looping
+    # POWERFUL MODEL: 70B model handles complex logic and prevents number-looping
     llm = ChatGroq(
         model_name="llama-3.3-70b-versatile", 
         temperature=0.1, 
@@ -60,24 +56,21 @@ if uploaded_file:
     )
 
     if st.button("🔍 Generate Analysis"):
-        if not is_valid_government_doc(st.session_state.full_text):
-            st.warning("⚠️ This document might not be a standard Bill, but I will try to analyze it anyway.")
-            
-        with st.spinner("Analyzing document with high-power AI..."):
+        with st.spinner("Analyzing document..."):
             prompt = f"""
-SYSTEM: You are a professional Public Policy Analyst. 
-TASK: Analyze the Bill text below for 8th grade students. Use simple, clear language.
-IMPORTANT: Do NOT generate random sequences of numbers. Use ONLY the provided text.
-FORMAT: Use EXACTLY the headings below. No markdown symbols like ** or #.
+SYSTEM: You are a professional Policy Analyst. Do not generate random sequences or numbers.
+TASK: Analyze the Bill text below for 8th grade students. Use ONLY the text provided.
+FORMAT: Use the headings provided. No markdown symbols like ** or #.
 
 SECTOR:
-(One word: Agri / Finance / Education / Healthcare / Tech / Environment / Defence / Other)
+One word: Agri, Finance, Education, Healthcare, Tech, Environment, Defence, etc.,
+be presice and find the sector Correctly and answer in one word.
 
 OBJECTIVE:
-(3 to 5 short lines explaining the purpose)
+(3 to 5 short lines)
 
 DETAILED SUMMARY:
-(10 to 20 simple bullet points)
+(10 to 20 bullet points)
 
 IMPACT ANALYSIS:
 Citizens:
@@ -108,7 +101,7 @@ TEXT:
             except Exception as e:
                 st.error(f"Error: {e}")
 
-# ---------------- HELPERS ----------------
+# ---------------- EXTRACTION HELPER ----------------
 def extract(title):
     content = st.session_state.analysis
     if not content: return "No data."
@@ -123,7 +116,7 @@ def extract(title):
             pos = content.find(m, start)
             if pos != -1 and pos < end: end = pos
         return content[start:end].strip()
-    except: return "Extraction error."
+    except: return "Parsing error."
 
 def generate_pdf(text):
     buffer = BytesIO()
@@ -141,42 +134,54 @@ def generate_pdf(text):
 # ---------------- UI DISPLAY (RESTORED SIZES) ----------------
 if st.session_state.analysis:
     st.markdown("---")
-    tab1, tab2, tab3 = st.tabs(["🏷️ Sector", "📄 Summary", "📊 Impact Analysis"])
+    tab1, tab2, tab3 = st.tabs(["🏷️ Sector", "📄 Summary", "📊 Impact"])
 
     with tab1:
         st.header("🏷️ Identified Sector")
         st.info(extract("SECTOR:"))
-
     with tab2:
         st.header("📄 Bill Summary")
         st.subheader("🎯 Objective")
         st.write(extract("OBJECTIVE:"))
-        
-        st.subheader("💡 Detailed Summary")
+        st.subheader("💡 Provisions")
         detail = extract("DETAILED SUMMARY:")
         st.write(detail)
-        # RESTORED: PDF Downloadable Summary
-        st.download_button("⬇️ Download Detailed Summary (PDF)", generate_pdf(detail), "Bill_Summary.pdf")
-
+        st.download_button("⬇️ Download PDF Summary", generate_pdf(detail), "Bill_Summary.pdf")
     with tab3:
         st.header("📊 Impact Analysis")
-        # RESTORED: Large formatted boxes for impact
-        st.markdown(f"### {extract('IMPACT ANALYSIS:')}")
-        
-        col1, col2 = st.columns(2)
-        with col1:
+        st.write(extract("IMPACT ANALYSIS:"))
+        c1, c2 = st.columns(2)
+        with c1:
             st.success("✅ **Positives**\n\n" + extract("POSITIVES:"))
-            st.write("💎 **Beneficiaries:**", extract("BENEFICIARIES:"))
+            st.write("**Beneficiaries:**", extract("BENEFICIARIES:"))
         with col2:
             st.error("⚠️ **Risks**\n\n" + extract("NEGATIVES / RISKS:"))
-            st.write("👥 **Affected Groups:**", extract("AFFECTED GROUPS:"))
+            st.write("**Affected Groups:**", extract("AFFECTED GROUPS:"))
 
-# ---------------- CHAT ----------------
-if st.session_state.analysis:
+# ---------------- AI CHAT (FIXED) ----------------
+if st.session_state.analysis and st.session_state.full_text:
     st.markdown("---")
     st.header("💬 Ask AI about this Bill")
     user_q = st.text_input("Ask a specific question about a clause or rule:")
+
     if user_q:
         with st.spinner("Searching bill text..."):
-            ans = llm.invoke(f"Provide a textual answer for an 8th grader. No numbers. Context: {st.session_state.full_text[:12000]}\nQuestion: {user_q}")
+            chat_prompt = f"""
+            SYSTEM: 
+            You are a Public Policy Analyst helping 8th-grade students. Give simple precise answers.
+            Answer the question based ONLY on the provided Parliamentary Bill text.
+            If the answer is not in the text, politely inform that nos answer available.
+            if it is in other Language , skip and read English only.
+            Keep the tone simple, professional, and educational.
+
+            BILL CONTEXT:
+            {st.session_state.full_text[:15000]}  # Sliced for token efficiency
+
+            QUESTION:
+            {user_q}
+
+            ANSWER:
+            """
+            # Use a slightly higher temperature (e.g., 0.5) for chat to allow for better explanations
+            ans = llm.invoke(chat_prompt)
             st.chat_message("assistant").write(ans.content)
