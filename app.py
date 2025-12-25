@@ -583,7 +583,7 @@ STRICT RULES:
 3. NO HALLUCINATION: If the information is truly not in the text, say: "I'm sorry, but the provided text does not contain an answer to that question."
 4. NO LOOPING: Provide natural sentences. Do not generate random sequences of numbers or repetitive clauses.
 5. TONE: Simple, professional, and educational for a 14-year-old.
-6. Understand the question and its purpose and act accordingly.
+6. DOCUMENT OBSERVATION: You are allowed to answer questions about the document's physical properties, such as what languages are used, the bill number, or who is speaking.
 
 {st.session_state.raw_analysis}
 
@@ -600,5 +600,6 @@ Provide a clear, concise answer. If the information is not in the analysis, say 
             st.chat_message("assistant").write(answer)
 
 # Removed the entire footer section as requested
+
 
 
