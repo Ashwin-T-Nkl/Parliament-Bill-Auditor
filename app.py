@@ -173,6 +173,7 @@ if st.session_state.analysis and st.session_state.full_text:
             If the answer is not in the text, politely inform that no answer available.
             If it is in other Language, skip and read English only.
             Keep the tone simple, professional, and educational.
+            Do not display other language content. if you cannot find answer state the relevant info if needed or simply that no answer available.
 
             BILL CONTEXT:
             {st.session_state.full_text[:15000]}
@@ -184,3 +185,4 @@ if st.session_state.analysis and st.session_state.full_text:
             """
             ans = llm.invoke(chat_prompt)
             st.chat_message("assistant").write(ans.content)
+
