@@ -48,17 +48,17 @@ if uploaded_file:
         st.error("Please set GROQ_API_KEY.")
         st.stop()
 
-    # POWERFUL MODEL: 70B model handles complex logic and prevents number-looping
+    # POWERFUL MODEL: Using 70B with temperature 0.2 to prevent number/text looping
     llm = ChatGroq(
         model_name="llama-3.3-70b-versatile", 
-        temperature=0.1, 
+        temperature=0.2, 
         max_tokens=3500
     )
 
     if st.button("🔍 Generate Analysis"):
         with st.spinner("Analyzing document..."):
             prompt = f"""
-SYSTEM: You are a professional Policy Analyst. Do not generate random sequences or numbers.
+SYSTEM: You are a professional Policy Analyst. Do not generate random legal articles or counting sequences.
 TASK: Analyze the Bill text below for 8th grade students. Use ONLY the text provided.
 FORMAT: Use the headings provided. No markdown symbols like ** or #.
 
@@ -131,7 +131,7 @@ def generate_pdf(text):
     buffer.seek(0)
     return buffer
 
-# ---------------- UI DISPLAY (RESTORED SIZES) ----------------
+# ---------------- UI DISPLAY ----------------
 if st.session_state.analysis:
     st.markdown("---")
     tab1, tab2, tab3 = st.tabs(["🏷️ Sector", "📄 Summary", "📊 Impact"])
@@ -154,7 +154,7 @@ if st.session_state.analysis:
         with c1:
             st.success("✅ **Positives**\n\n" + extract("POSITIVES:"))
             st.write("**Beneficiaries:**", extract("BENEFICIARIES:"))
-        with c2: # FIXED NameError: col2 changed to c2
+        with c2: # FIXED TYPO: col2 changed to c2
             st.error("⚠️ **Risks**\n\n" + extract("NEGATIVES / RISKS:"))
             st.write("**Affected Groups:**", extract("AFFECTED GROUPS:"))
 
@@ -170,8 +170,8 @@ if st.session_state.analysis and st.session_state.full_text:
             SYSTEM: 
             You are a Public Policy Analyst helping 8th-grade students. Give simple precise answers.
             Answer the question based ONLY on the provided Parliamentary Bill text.
-            If the answer is not in the text, politely inform that nos answer available.
-            if it is in other Language , skip and read English only.
+            If the answer is not in the text, politely inform that no answer available.
+            If it is in other Language, skip and read English only.
             Keep the tone simple, professional, and educational.
 
             BILL CONTEXT:
