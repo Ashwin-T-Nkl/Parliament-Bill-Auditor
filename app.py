@@ -12,7 +12,7 @@ st.set_page_config(page_title="Parliament Bill Auditor", layout="wide")
 st.title("🏛️ Parliament Bill Auditor")
 
 # ---------------- ROBUST VALIDATION ----------------
-# Keywords to catch documents like Immigration, Sea Carriage, and Chit Fund bills
+# Keywords specifically chosen from your uploaded documents to ensure they pass
 BILL_KEYWORDS = [
     "bill", "act", "parliament", "lok sabha", "rajya sabha", "gazette", 
     "legislative", "enacted", "item no", "clause", "minister", "ministry",
@@ -21,15 +21,15 @@ BILL_KEYWORDS = [
 
 def clean_parliamentary_text(text):
     """
-    Fixed the SyntaxError here by using proper regex strings.
-    This removes tags to help the AI focus on the actual law.
+    FIXED: Uses a proper raw string regex to remove source tags like .
+    This prevents the SyntaxError and helps the AI focus on relevant content.
     """
-    # Using a raw string r'' and escaping the brackets correctly
+    # Specifically targets the pattern found in your files
     text = re.sub(r'\', '', text)
     return ' '.join(text.split())
 
 def is_valid_government_doc(text):
-    """Returns True if the document contains core legislative keywords."""
+    """Checks if the document is a bill using English and Hindi legal terms."""
     if len(text.strip()) < 100: return False
     text_lower = text.lower()
     return any(k in text_lower for k in BILL_KEYWORDS)
@@ -55,7 +55,7 @@ if uploaded_file:
                 if t: raw_text += t + "\n"
             except: pass
         
-        # Clean the text using the fixed function
+        # Clean the text using the fixed regex function
         st.session_state.full_text = clean_parliamentary_text(raw_text)
 
     if "GROQ_API_KEY" not in os.environ:
@@ -66,11 +66,11 @@ if uploaded_file:
 
     if st.button("🔍 Generate Analysis"):
         if not is_valid_government_doc(st.session_state.full_text):
-            st.warning("⚠️ This document might not be a standard Bill, but I will try to analyze it anyway.")
+            st.warning("⚠️ This document might not be a standard Bill, but I will try to analyze it for you.")
         
         with st.spinner("Analyzing document..."):
             prompt = f"""
-            You are a Public Policy Analyst for 8th grade students.
+            You are a Public Policy Analyst. Your users are 8th grade students.
             Analyze the provided Bill/Policy text. Use ONLY the provided text.
             Do NOT use markdown symbols like ** or #. Follow the headings exactly.
 
