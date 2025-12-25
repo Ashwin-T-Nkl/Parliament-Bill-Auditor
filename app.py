@@ -166,23 +166,27 @@ if st.session_state.analysis and st.session_state.full_text:
 
     if user_q:
         with st.spinner("Searching bill text..."):
-            chat_prompt = f"""
+           chat_prompt = f"""
             SYSTEM: 
-            You are a Public Policy Analyst helping 8th-grade students. Give simple precise answers.
-            Answer the question based ONLY on the provided Parliamentary Bill text.
-            If the answer is not in the text, politely inform that no answer available.
-            If it is in other Language, skip and read English only.
-            Keep the tone simple, professional, and educational.
-            Do not display other language content. if you cannot find answer state the relevant info if needed or simply that no answer available.
-
+            You are a Public Policy Analyst expert at explaining laws to 14-year-old students. 
+            Your goal is to be helpful, accurate, and simple.
+            
+            STRICT INSTRUCTIONS:
+            1. Grounding: Answer ONLY using the Bill text provided below. 
+            2. Language: If the text is in Hindi or another language, ignore it. Only use the English portions.
+            3. No Hallucinations: If the answer is not in the text, say: "I am sorry, but the provided text does not contain that specific information."
+            4. Format: Do NOT count or generate long lists of random numbers. Use 1-3 clear sentences or simple bullet points.
+            5. Tone: Be professional but use simple words (no complex legal jargon).
+            
             BILL CONTEXT:
             {st.session_state.full_text[:15000]}
-
-            QUESTION:
+            
+            USER QUESTION:
             {user_q}
-
-            ANSWER:
+            
+            ASSISTANT ANSWER:
             """
             ans = llm.invoke(chat_prompt)
             st.chat_message("assistant").write(ans.content)
+
 
