@@ -31,64 +31,6 @@ REAL_BILL_PATTERNS = [
     r"financial\s+memorandum",  # Standard bill section
 ]
 
-# ---------------- ANALYSIS PARSING FUNCTIONS (DEFINED EARLY) ----------------
-def format_as_bullets(text):
-    """Format text as bullet points"""
-    if not text:
-        return ""
-    
-    lines = text.strip().split('\n')
-    bullet_lines = []
-    
-    for line in lines:
-        line = line.strip()
-        if line:
-            # If line doesn't already start with bullet, add it
-            if not line.startswith('-'):
-                bullet_lines.append(f"- {line}")
-            else:
-                bullet_lines.append(line)
-    
-    return '\n'.join(bullet_lines)
-
-def parse_analysis_data():
-    """Parse the analysis text into structured data"""
-    if not st.session_state.get('analysis'):
-        return
-    
-    content = st.session_state.analysis
-    sections = {}
-    
-    # Define all section headers
-    headers = [
-        "SECTOR:", "OBJECTIVE:", "DETAILED SUMMARY:", "IMPACT ANALYSIS:",
-        "BENEFICIARIES:", "AFFECTED GROUPS:", "POSITIVES:", "NEGATIVES / RISKS:"
-    ]
-    
-    # Parse each section
-    for i in range(len(headers)):
-        header = headers[i]
-        start_idx = content.find(header)
-        
-        if start_idx != -1:
-            start_idx += len(header)
-            # Find the end (next header or end of text)
-            end_idx = len(content)
-            for j in range(i + 1, len(headers)):
-                next_header_pos = content.find(headers[j], start_idx)
-                if next_header_pos != -1 and next_header_pos < end_idx:
-                    end_idx = next_header_pos
-                    break
-            
-            section_text = content[start_idx:end_idx].strip()
-            # Store the section with its header as key
-            section_key = header.replace(":", "").lower().replace(" ", "_")
-            if section_key == "detailed_summary":
-                section_key = "detailed_summary"
-            sections[section_key] = format_as_bullets(section_text)
-    
-    st.session_state.analysis_data = sections
-
 # ---------------- HELPER FUNCTIONS ----------------
 def is_valid_government_doc(text):
     """
@@ -117,6 +59,60 @@ def is_valid_government_doc(text):
         return True, "⚠️ Possible bill detected - proceeding with analysis"
     else:
         return False, f"❌ Document doesn't appear to be a parliamentary bill"
+
+def format_as_bullets(text):
+    """Format text as bullet points"""
+    if not text:
+        return ""
+    
+    lines = text.strip().split('\n')
+    bullet_lines = []
+    
+    for line in lines:
+        line = line.strip()
+        if line:
+            # If line doesn't already start with bullet, add it
+            if not line.startswith('-'):
+                bullet_lines.append(f"- {line}")
+            else:
+                bullet_lines.append(line)
+    
+    return '\n'.join(bullet_lines)
+
+def parse_analysis_data(analysis_text):
+    """Parse the analysis text into structured data"""
+    if not analysis_text:
+        return {}
+    
+    sections = {}
+    
+    # Define all section headers
+    headers = [
+        "SECTOR:", "OBJECTIVE:", "DETAILED SUMMARY:", "IMPACT ANALYSIS:",
+        "BENEFICIARIES:", "AFFECTED GROUPS:", "POSITIVES:", "NEGATIVES / RISKS:"
+    ]
+    
+    # Parse each section
+    for i in range(len(headers)):
+        header = headers[i]
+        start_idx = analysis_text.find(header)
+        
+        if start_idx != -1:
+            start_idx += len(header)
+            # Find the end (next header or end of text)
+            end_idx = len(analysis_text)
+            for j in range(i + 1, len(headers)):
+                next_header_pos = analysis_text.find(headers[j], start_idx)
+                if next_header_pos != -1 and next_header_pos < end_idx:
+                    end_idx = next_header_pos
+                    break
+            
+            section_text = analysis_text[start_idx:end_idx].strip()
+            # Store the section with its header as key
+            section_key = header.replace(":", "").lower().replace(" ", "_")
+            sections[section_key] = format_as_bullets(section_text)
+    
+    return sections
 
 def extract_section(section_name):
     """Extract section from analysis data"""
@@ -300,7 +296,7 @@ TEXT TO ANALYZE:
                 st.session_state.analysis = response.content
                 
                 # Parse the analysis into structured data
-                parse_analysis_data()  # This is now defined above
+                st.session_state.analysis_data = parse_analysis_data(response.content)
                 
             except Exception as e:
                 st.error(f"Error during analysis: {e}")
@@ -347,7 +343,10 @@ if st.session_state.analysis:
         st.header("Impact Analysis")
         
         impact_content = extract_section("IMPACT_ANALYSIS")
-        st.write(impact_content)
+        if impact_content != "Section not found in analysis.":
+            st.write(impact_content)
+        else:
+            st.info("No impact analysis available")
         
         col1, col2 = st.columns(2)
         with col1:
@@ -394,12 +393,6 @@ if st.session_state.analysis and st.session_state.full_text:
     
     if user_q:
         with st.spinner("Finding answer in analysis..."):
-            # Build context from analysis data
-            context = ""
-            if st.session_state.analysis_data:
-                for section, content in st.session_state.analysis_data.items():
-                    context += f"\n\n{section.upper()}:\n{content}"
-            
             # Special handling for "who proposed" questions
             if "who proposed" in user_q.lower() or "who sponsored" in user_q.lower() or "proposer" in user_q.lower():
                 # Extract proposer from original text
@@ -424,8 +417,12 @@ if st.session_state.analysis and st.session_state.full_text:
                 else:
                     answer = "The bill proposer/sponsor is not explicitly mentioned in the extracted text."
             else:
-                # For other questions, use the analysis as context
-                if context:
+                # For other questions, build context from analysis data
+                if st.session_state.analysis_data:
+                    context = ""
+                    for section, content in st.session_state.analysis_data.items():
+                        context += f"\n\n{section.upper()}:\n{content}"
+                    
                     chat_prompt = f"""
 SYSTEM: You are a helpful assistant answering questions about a parliamentary bill analysis.
 Answer based ONLY on the analysis provided below.
