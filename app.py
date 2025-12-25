@@ -255,8 +255,7 @@ if "raw_analysis" not in st.session_state:
 
 # File upload section
 with st.container():
-    st.markdown("### Upload Parliamentary Bill")
-    uploaded_file = st.file_uploader("Choose a PDF file", type=["pdf"], label_visibility="collapsed")
+    uploaded_file = st.file_uploader("Upload Parliamentary Bill", type=["pdf"], label_visibility="collapsed")
 
 if uploaded_file:
     if st.session_state.last_file != uploaded_file.name:
@@ -561,7 +560,7 @@ if st.session_state.analysis and st.session_state.full_text:
     st.markdown("---")
     st.markdown('<div class="section-header">💬 Ask AI about this Bill</div>', unsafe_allow_html=True)
     
-    user_q = st.text_input("Ask a question about the bill:", placeholder="e.g., Who proposed this bill? What are the key provisions?")
+    user_q = st.text_input("  ", placeholder=" ")
     
     if user_q:
         with st.spinner("Searching analysis..."):
@@ -574,7 +573,14 @@ if st.session_state.analysis and st.session_state.full_text:
             else:
                 # Use the analysis for other questions
                 chat_prompt = f"""
-Answer the question based ONLY on this bill analysis:
+Your goal is to provide simple, precise, and educational answers.
+
+STRICT RULES:
+1. DATA SOURCE: Answer the question based ONLY on the provided Bill text.
+2. NO HALLUCINATION: If the answer is not in the text, say: "I'm sorry, but the provided text does not contain an answer to that question."
+3. NO LOOPING: Do not generate long sequences of numbers or repetitive clauses. Stick to natural sentences.
+4. BILINGUAL HANDLING: If the text is in Hindi or another language, ignore those parts and focus only on the English text.
+5. FORMATTING: Use 1-3 simple sentences or a small bulleted list. No complex legal jargon.
 
 {st.session_state.raw_analysis}
 
@@ -591,3 +597,4 @@ Provide a clear, concise answer. If the information is not in the analysis, say 
             st.chat_message("assistant").write(answer)
 
 # Removed the entire footer section as requested
+
